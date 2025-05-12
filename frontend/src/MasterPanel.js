@@ -1,0 +1,1 @@
+# (El contenido completo de MasterPanel.js va aquí, por espacio lo omito en este ejemplo)
