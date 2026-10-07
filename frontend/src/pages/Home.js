@@ -42,7 +42,7 @@ export default function Home() {
                 <header className="home-hero">
                     <Art name="encapuchados.png" />
                     <img className="logo" src={`${process.env.PUBLIC_URL}/img/logo.webp`} alt="" width="132" height="132" />
-                    <h1>Fieles<span>y Felones</span></h1>
+                    <h1>Fieles<span><em>y</em>Felones</span></h1>
                     <p>El juego de traición para viajes con amigos.</p>
                 </header>
 

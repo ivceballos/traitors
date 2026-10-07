@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { useLocation } from 'react-router-dom';
 import { Camera, Minus, Plus } from '@phosphor-icons/react';
 import { photoSrc, resizePhoto, socket } from './api';
 
@@ -192,9 +193,12 @@ export function TestsTable({ tests }) {
 
 // Fondo de castillo con niebla y antorchas (va detrás de todas las pantallas)
 export function Atmosphere() {
+    // Castillo a plena vista en la portada y la tele; atenuado donde se juega
+    const { pathname } = useLocation();
+    const full = pathname === '/' || pathname.startsWith('/tv/');
     return (
         <>
-            <div className="atmosphere" aria-hidden="true" style={{
+            <div className={`atmosphere ${full ? '' : 'dim'}`} aria-hidden="true" style={{
                 '--castle-v': `url(${process.env.PUBLIC_URL}/img/castillo-vertical.jpg)`,
                 '--castle-h': `url(${process.env.PUBLIC_URL}/img/castillo-horizontal.jpg)`
             }}>

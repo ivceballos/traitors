@@ -7,7 +7,8 @@ import Player from './pages/Player';
 import Master from './pages/Master';
 import TV from './pages/TV';
 import { Atmosphere } from './components';
-import '@fontsource-variable/archivo/wdth.css';
+import '@fontsource/im-fell-english-sc';
+import '@fontsource/im-fell-english/400-italic.css';
 import '@fontsource-variable/geist';
 import './styles.css';
 

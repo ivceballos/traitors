@@ -23,7 +23,8 @@
     --accent-line: rgba(210, 58, 66, 0.6);
     --torch: 255, 150, 60; /* solo para la luz de las antorchas, nunca en la interfaz */
     --radius: 2px;
-    --font-display: 'Archivo Variable', 'Arial Narrow', sans-serif;
+    --font-display: 'IM Fell English SC', 'IM Fell English', Georgia, serif;
+    --font-display-italic: 'IM Fell English', Georgia, serif;
     --font: 'Geist Variable', system-ui, -apple-system, 'Segoe UI', sans-serif;
     --ease: cubic-bezier(0.16, 1, 0.3, 1);
 }
@@ -47,11 +48,9 @@ svg { flex-shrink: 0; }
 /* ============ Tipografía ============ */
 .display, h1, h2 {
     font-family: var(--font-display);
-    font-stretch: 62%;
-    font-weight: 850;
-    text-transform: uppercase;
-    letter-spacing: -0.01em;
-    line-height: 0.9;
+    font-weight: 400;
+    letter-spacing: 0.01em;
+    line-height: 0.95;
     margin: 0;
 }
 h1 { font-size: clamp(3rem, 15vw, 6.5rem); }
@@ -117,7 +116,7 @@ h3 { font-family: var(--font); font-size: 1rem; font-weight: 600; margin: 0 0 12
 .input::placeholder { color: var(--faint); }
 .input:focus { border-color: var(--text); }
 .input.code {
-    font-family: var(--font-display); font-stretch: 62%; font-weight: 850;
+    font-family: var(--font-display); font-weight: 400;
     font-size: 3rem; line-height: 1; letter-spacing: 0.35em; text-transform: uppercase;
     padding: 14px 0 14px 0.35em; text-align: center;
 }
@@ -141,7 +140,7 @@ h3 { font-family: var(--font); font-size: 1rem; font-weight: 600; margin: 0 0 12
 /* ============ Cabecera ============ */
 .topbar { position: sticky; top: 0; z-index: 10; background: rgba(6, 10, 17, 0.82); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); border-bottom: 1px solid var(--line); }
 .topbar-inner { max-width: 1120px; margin: 0 auto; padding: 10px 16px; display: flex; align-items: center; gap: 12px; min-height: 60px; }
-.brand { font-family: var(--font-display); font-stretch: 62%; font-weight: 850; font-size: 1.5rem; text-transform: uppercase; letter-spacing: 0.02em; line-height: 1; }
+.brand { font-family: var(--font-display); font-weight: 400; font-size: 1.5rem; letter-spacing: 0.06em; line-height: 1; }
 .tag {
     display: inline-flex; align-items: center; gap: 6px;
     padding: 3px 8px; border: 1px solid var(--line-strong); border-radius: var(--radius);
@@ -163,7 +162,7 @@ h3 { font-family: var(--font); font-size: 1rem; font-weight: 600; margin: 0 0 12
     width: var(--size, 56px); height: var(--size, 56px); border-radius: 50%; flex-shrink: 0;
     object-fit: cover; background: var(--surface-3);
     display: inline-flex; align-items: center; justify-content: center;
-    font-family: var(--font-display); font-stretch: 62%; font-weight: 850; color: var(--muted);
+    font-family: var(--font-display); font-weight: 400; color: var(--muted);
     font-size: calc(var(--size, 56px) * 0.46);
     box-shadow: 0 0 0 2px var(--bg), 0 0 0 3px var(--line-strong);
 }
@@ -233,7 +232,7 @@ button.player-tile:disabled { cursor: default; }
 .thresholds .display { font-size: 2.2rem; color: var(--faint); }
 .thresholds .reached .display { color: var(--text); }
 .thresholds .reached { background: var(--surface-2); }
-.big-number { font-family: var(--font-display); font-stretch: 62%; font-weight: 850; font-size: 4.5rem; line-height: 0.85; }
+.big-number { font-family: var(--font-display); font-weight: 400; font-size: 4.5rem; line-height: 0.85; }
 
 /* ============ Botín ============ */
 .treasure { display: flex; align-items: baseline; gap: 4px 12px; flex-wrap: wrap; }
@@ -266,7 +265,8 @@ button.player-tile:disabled { cursor: default; }
 /* ============ Portada ============ */
 .home { min-height: 100dvh; display: grid; grid-template-rows: 1fr auto; }
 .home-hero { padding: 48px 0 32px; }
-.home-hero h1 { font-size: clamp(3.6rem, 19vw, 7.5rem); line-height: 0.84; margin-top: 18px; }
+.home-hero h1 { font-size: clamp(3.4rem, 17vw, 7rem); line-height: 0.9; margin-top: 18px; }
+.home-hero h1 em { font-family: var(--font-display-italic); font-style: italic; color: var(--muted); font-size: 0.7em; margin-right: 0.12em; }
 .home-hero h1 span { display: block; color: var(--accent); }
 .home-hero p { color: var(--muted); max-width: 30ch; margin: 18px 0 0; font-size: 1.05rem; }
 
@@ -279,7 +279,7 @@ button.player-tile:disabled { cursor: default; }
 .mc-nav button.on { color: var(--text); border-bottom-color: var(--accent); }
 .stat-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); border: 1px solid var(--line); }
 .stat { padding: 12px 14px; border-left: 1px solid var(--line); border-top: 1px solid var(--line); margin: -1px 0 0 -1px; }
-.stat .value { font-family: var(--font-display); font-stretch: 62%; font-weight: 850; font-size: 2rem; line-height: 1; margin-top: 4px; text-transform: uppercase; }
+.stat .value { font-family: var(--font-display); font-weight: 400; font-size: 2rem; line-height: 1; margin-top: 4px; }
 .share-box { display: flex; gap: 8px; align-items: center; border: 1px solid var(--line-strong); border-radius: var(--radius); padding: 4px 4px 4px 12px; }
 .share-box code { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 0.85rem; color: var(--muted); }
 
@@ -287,8 +287,8 @@ button.player-tile:disabled { cursor: default; }
 /* Se adapta por orientación, no por ancho: los navegadores de TV (Silk) informan anchos de móvil */
 .tv { min-height: 100dvh; padding: 4vmin 5vmin; display: flex; flex-direction: column; gap: 4vmin; }
 .tv-header { display: flex; align-items: flex-end; justify-content: space-between; gap: 3vmin; border-bottom: 1px solid var(--line); padding-bottom: 2.5vmin; }
-.tv-title { font-family: var(--font-display); font-stretch: 62%; font-weight: 850; text-transform: uppercase; font-size: 9vmin; line-height: 0.85; }
-.tv-phase { font-family: var(--font-display); font-stretch: 62%; font-weight: 850; text-transform: uppercase; font-size: 5vmin; line-height: 0.85; color: var(--muted); text-align: right; }
+.tv-title { font-family: var(--font-display); font-weight: 400; font-size: 9vmin; line-height: 0.85; }
+.tv-phase { font-family: var(--font-display); font-weight: 400; font-size: 5vmin; line-height: 0.85; color: var(--muted); text-align: right; }
 .tv-phase.roundtable { color: var(--accent); }
 .tv-body { flex: 1; display: grid; gap: 6vmin; grid-template-columns: 1fr; }
 @media (orientation: landscape) { .tv-body { grid-template-columns: 1.15fr 0.85fr; align-items: start; } }
@@ -306,7 +306,7 @@ button.player-tile:disabled { cursor: default; }
 .tv .label { font-size: 2vmin; }
 .tv-join { display: flex; align-items: center; gap: 4vmin; }
 .tv-join img { width: 24vmin; height: 24vmin; background: var(--text); padding: 1.2vmin; }
-.tv-code { font-family: var(--font-display); font-stretch: 62%; font-weight: 850; font-size: 16vmin; line-height: 0.85; letter-spacing: 0.08em; }
+.tv-code { font-family: var(--font-display); font-weight: 400; font-size: 16vmin; line-height: 0.85; letter-spacing: 0.08em; }
 
 @media (prefers-reduced-motion: reduce) {
     *, *::before, *::after { transition-duration: 0.01ms !important; animation-duration: 0.01ms !important; }
@@ -314,7 +314,7 @@ button.player-tile:disabled { cursor: default; }
 .field > span:first-child { font-size: 0.8rem; color: var(--muted); font-weight: 500; }
 
 /* Prueba lanzada a la tele por el MC */
-.tv-spotlight { position: fixed; inset: 0; z-index: 15; background: var(--bg); padding: 6vmin 7vmin; display: flex; flex-direction: column; justify-content: space-between; gap: 4vmin; animation: spot-in .6s var(--ease); }
+.tv-spotlight { position: fixed; inset: 0; z-index: 15; background: rgba(6, 10, 17, 0.84); backdrop-filter: blur(3px); -webkit-backdrop-filter: blur(3px); padding: 6vmin 7vmin; display: flex; flex-direction: column; justify-content: space-between; gap: 4vmin; animation: spot-in .6s var(--ease); }
 .tv-spotlight .tv-title { font-size: clamp(10vmin, 14vw, 22vmin); line-height: 0.82; }
 .tv-spotlight .desc { font-size: 3.2vmin; line-height: 1.45; max-width: 70ch; white-space: pre-line; color: var(--text); }
 .tv-spotlight .foot { display: flex; align-items: flex-end; justify-content: space-between; gap: 4vmin; border-top: 1px solid var(--line); padding-top: 3vmin; }
@@ -389,3 +389,11 @@ textarea.input { min-height: 96px; resize: vertical; line-height: 1.45; }
 /* Logo dorado: un halo cálido, como si lo iluminara una antorcha */
 .logo { display: block; height: auto; filter: drop-shadow(0 0 18px rgba(255, 170, 70, 0.28)) drop-shadow(0 6px 14px rgba(0, 0, 0, 0.6)); }
 .home-hero .logo { width: 132px; }
+
+/* Títulos barrocos: tipos Fell del siglo XVII con un leve relieve */
+h1, h2, .display, .tv-title, .tv-phase, .tv-code { text-shadow: 0 1px 0 rgba(0, 0, 0, 0.6), 0 0 24px rgba(0, 0, 0, 0.5); }
+
+/* En las pantallas de juego el castillo se atenúa para no competir con la información */
+.atmosphere .castle { transition: opacity .6s var(--ease); }
+.atmosphere.dim .castle { opacity: 0.4; }
+.atmosphere.dim .torch { opacity: 0.6; }
