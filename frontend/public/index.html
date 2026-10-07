@@ -12,9 +12,66 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <title>Fieles y Felones</title>
     <script src="%PUBLIC_URL%/config.js"></script>
+    <!-- Velo de entrada: oscuridad con niebla que se ilumina cuando están las fuentes y las imágenes -->
+    <style>
+      #velo {
+        position: fixed; inset: 0; z-index: 9999; overflow: hidden; pointer-events: none;
+        background: #04070c; transition: opacity 1.4s cubic-bezier(.16, 1, .3, 1) .25s, visibility 0s 1.7s;
+      }
+      #velo .niebla {
+        position: absolute; inset: -30%; opacity: .55;
+        background:
+          radial-gradient(40% 30% at 30% 60%, rgba(90, 120, 160, .35), transparent 70%),
+          radial-gradient(35% 25% at 70% 45%, rgba(70, 100, 140, .3), transparent 70%),
+          radial-gradient(50% 35% at 50% 85%, rgba(110, 140, 180, .3), transparent 70%);
+        filter: blur(30px); animation: deriva 9s ease-in-out infinite alternate;
+      }
+      #velo .niebla.b { animation-duration: 13s; animation-direction: alternate-reverse; opacity: .4; }
+      #velo .luz {
+        position: absolute; left: 50%; top: 55%; width: 140vmax; height: 140vmax; border-radius: 50%;
+        transform: translate(-50%, -50%) scale(.05); opacity: 0;
+        background: radial-gradient(circle, rgba(255, 170, 80, .55) 0%, rgba(214, 170, 76, .18) 25%, transparent 55%);
+        transition: transform 1.6s cubic-bezier(.16, 1, .3, 1), opacity .9s ease;
+      }
+      #velo.lista .luz { transform: translate(-50%, -50%) scale(1); opacity: 1; }
+      #velo.lista { opacity: 0; visibility: hidden; }
+      @keyframes deriva { from { transform: translate3d(-6%, 2%, 0) scale(1); } to { transform: translate3d(6%, -3%, 0) scale(1.15); } }
+      @media (prefers-reduced-motion: reduce) {
+        #velo .niebla { animation: none; }
+        #velo, #velo .luz { transition-duration: .3s; transition-delay: 0s; }
+      }
+    </style>
   </head>
   <body>
     <noscript>Necesitas activar JavaScript para jugar.</noscript>
+    <div id="velo" aria-hidden="true"><div class="niebla"></div><div class="niebla b"></div><div class="luz"></div></div>
     <div id="root"></div>
+    <script>
+      (function () {
+        var velo = document.getElementById('velo');
+        var base = '%PUBLIC_URL%/img/';
+        var vertical = window.innerHeight > window.innerWidth;
+        var imagenes = [vertical ? 'castillo-vertical.jpg' : 'castillo-horizontal.jpg', 'logo.webp', 'lacre.webp'];
+        var cargar = function (src) {
+          return new Promise(function (ok) { var i = new Image(); i.onload = i.onerror = ok; i.src = base + src; });
+        };
+        var cargado = new Promise(function (ok) {
+          if (document.readyState === 'complete') ok(); else window.addEventListener('load', ok);
+        });
+        var fuentes = cargado.then(function () {
+          if (!document.fonts) return;
+          return Promise.all([
+            document.fonts.load('1em "IM Fell English SC"'),
+            document.fonts.load('1em "Geist Variable"')
+          ]).catch(function () {});
+        });
+        var minimo = new Promise(function (ok) { setTimeout(ok, 900); }); // que se vea la niebla aunque cargue rápido
+        var maximo = new Promise(function (ok) { setTimeout(ok, 6000); }); // nunca más de 6 s a oscuras
+        Promise.race([Promise.all([cargado, fuentes, minimo].concat(imagenes.map(cargar))), maximo]).then(function () {
+          velo.classList.add('lista');
+          setTimeout(function () { velo.remove(); }, 2000);
+        });
+      })();
+    </script>
   </body>
 </html>
