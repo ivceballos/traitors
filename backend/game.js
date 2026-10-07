@@ -13,8 +13,8 @@ const MIN_PLAYERS = 4;
 // ---------- Configuración ----------
 
 const DEFAULT_CONFIG = {
-    name: 'Partida',
-    factions: { loyal: 'Fieles', traitor: 'Traidores' },
+    name: 'Fieles y Felones',
+    factions: { loyal: 'Fieles', traitor: 'Felones' },
     days: 4,
     traitorCount: 0, // 0 = automático según el número de jugadores
     // Eliminaciones por día: mesa redonda (votación) y cónclave (asesinatos nocturnos)
@@ -49,10 +49,9 @@ const PRESETS = {
         config: {}
     },
     'fieles-felones': {
-        label: 'Fieles y Felones (despedida, 12 jugadores)',
+        label: 'Despedida de Adrián (12 jugadores)',
         config: {
-            name: 'Fieles y Felones',
-            factions: { loyal: 'Fieles', traitor: 'Felones' },
+            name: 'Despedida de Adrián',
             schedule: [
                 { roundtable: 0, conclave: 0 },
                 { roundtable: 1, conclave: 1 },

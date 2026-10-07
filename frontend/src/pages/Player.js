@@ -470,7 +470,7 @@ function RoleModal({ me, view, onClose }) {
                     <div className="role-card-inner">
                         <div className="role-face front">
                             <span className="brand">{view.name}</span>
-                            <span className="display">Tu<br />rol</span>
+                            <img className="logo" src={`${process.env.PUBLIC_URL}/img/logo.webp`} alt="" style={{ width: '62%', alignSelf: 'center' }} />
                             <span className="small muted">Toca para darle la vuelta</span>
                         </div>
                         <div className={`role-face back ${me.role} has-art`}>

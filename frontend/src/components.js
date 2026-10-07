@@ -72,7 +72,7 @@ export function OfflineBanner({ connected }) {
 export function Loading({ text }) {
     return (
         <div className="loading">
-            <span className="display">Traidores</span>
+            <img className="logo" src={`${process.env.PUBLIC_URL}/img/logo.webp`} alt="Fieles y Felones" width="120" height="120" />
             {text && <span className="small">{text}</span>}
         </div>
     );

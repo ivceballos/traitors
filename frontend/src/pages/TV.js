@@ -42,7 +42,10 @@ export default function TV() {
             {spot && <Spotlight test={spot} view={view} />}
             <OfflineBanner connected={connected} />
             <header className="tv-header">
-                <div className="tv-title">{view.name}</div>
+                <div className="row nowrap" style={{ gap: '3vmin' }}>
+                    <img className="logo" src={`${process.env.PUBLIC_URL}/img/logo.webp`} alt="" style={{ width: '11vmin', height: '11vmin' }} />
+                    <div className="tv-title">{view.name}</div>
+                </div>
                 <div className={`tv-phase ${view.phase}`}>
                     {view.phase === 'end' ? `Ganan los ${winners}` : title}
                     {(view.phase === 'roundtable' || view.phase === 'night') && <div className="label" style={{ marginTop: '1vmin' }}>Día {view.day} de {view.days}</div>}
