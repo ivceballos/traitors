@@ -471,7 +471,17 @@ h1, h2, .display, .tv-title, .tv-phase, .tv-code { text-shadow: 0 1px 0 rgba(0, 
 .role-face.back.loyal.has-art { background: radial-gradient(120% 80% at 50% 25%, #1e2c44 0%, #0b1220 55%, var(--bg) 100%); }
 
 /* Sellos de los bandos */
-.seal { display: inline-block; flex-shrink: 0; object-fit: contain; filter: drop-shadow(0 2px 6px rgba(0, 0, 0, 0.6)); }
+/* Sellos: lacre rojo con el grabado en dorado, iguales en color para los tres bandos */
+.seal {
+    display: inline-grid; place-items: center; flex-shrink: 0; position: relative;
+    background: var(--seal-wax) center / contain no-repeat;
+    filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.55));
+}
+.seal-ink {
+    width: 72%; height: 72%;
+    background: linear-gradient(135deg, #f3d488 0%, #d6aa4c 45%, #a07a2c 100%);
+    -webkit-mask: var(--seal-img) center / contain no-repeat; mask: var(--seal-img) center / contain no-repeat;
+}
 .role-face > .card-seal { margin: 0 auto 10px; }
 /* Carta con ilustración: sello, «Eres de los», nombre y misión centrados en el tercio inferior */
 .role-face.back.has-art { align-items: center; text-align: center; padding-bottom: 26px; }

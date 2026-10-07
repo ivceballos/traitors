@@ -18,11 +18,22 @@ export function Avatar({ player, size = 56, className = '' }) {
 
 const img = name => `${process.env.PUBLIC_URL}/img/${name}`;
 
-// Sello de cada bando (y de los Fantasmas)
+// Sello de cada bando (y de los Fantasmas): lacre rojo con el grabado en dorado. Los tres
+// comparten color a propósito, para que nadie distinga el bando mirando de reojo una pantalla;
+// solo cambia el dibujo (farol, puñal, calavera).
 export function Seal({ kind, size = 48, className = '' }) {
     const file = { traitor: 'sello-felones.webp', loyal: 'sello-fieles.webp', ghost: 'sello-fantasmas.webp' }[kind];
     if (!file) return null;
-    return <img className={`seal ${className}`} src={img(file)} alt="" width={size} height={size} style={{ width: size, height: size }} />;
+    return (
+        <span
+            className={`seal ${className}`}
+            role="img"
+            aria-hidden="true"
+            style={{ width: size, height: size, '--seal-wax': `url(${img('lacre.webp')})`, '--seal-img': `url(${img(file)})` }}
+        >
+            <span className="seal-ink" />
+        </span>
+    );
 }
 
 export function RoleTag({ role, factions }) {
