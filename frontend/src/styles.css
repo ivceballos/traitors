@@ -118,51 +118,12 @@ h3 { font-family: var(--font); font-size: 1rem; font-weight: 600; margin: 0 0 12
 .btn:hover { border-color: var(--btn-line-hover); }
 .btn:active:not(:disabled) { transform: translateY(1px); box-shadow: inset 0 0 0 1px var(--btn-filete), inset 0 2px 8px rgba(0, 0, 0, 0.35); }
 .btn:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
-/*
-  Primario: pan de oro bruñido, el mismo oro estampado de los sellos de lacre.
-  Capas, de arriba abajo: reflejo que barre al pasar el ratón, brillo irregular del bruñido,
-  sombra de desgaste y el metal base. El grano va en ::before
-  y el filete grabado (como el aro del lacre) en ::after. Letra marfil con sombra para leerse sobre el oro.
-*/
 .btn.primary {
-    --btn-fg: #fffaf0; --btn-line: #6e4a1a; --btn-line-hover: #5c3d14;
-    isolation: isolate;
-    background:
-        linear-gradient(105deg, transparent 38%, rgba(255, 246, 214, 0.42) 50%, transparent 62%),
-        radial-gradient(120% 160% at 18% -10%, rgba(255, 238, 196, 0.6), transparent 46%),
-        radial-gradient(90% 140% at 88% 120%, rgba(84, 50, 12, 0.5), transparent 58%),
-        linear-gradient(180deg, #e8c47a 0%, #d3a752 26%, #b98a3c 52%, #c79a4a 70%, #8c6124 100%);
-    background-size: 260% 100%, 100% 100%, 100% 100%, 100% 100%;
-    background-position: 130% 0, 0 0, 0 0, 0 0;
-    box-shadow:
-        inset 0 1px 0 rgba(255, 236, 190, 0.75),
-        inset 0 -2px 4px rgba(70, 40, 8, 0.45),
-        0 6px 16px -8px rgba(140, 85, 15, 0.6),
-        0 1px 0 rgba(0, 0, 0, 0.5);
-    text-shadow: 0 1px 2px rgba(60, 35, 5, 0.75), 0 0 1px rgba(60, 35, 5, 0.6);
-    transition: background-position 0.9s var(--ease), border-color .2s var(--ease), transform .1s var(--ease), filter .2s var(--ease);
+    --btn-bg: linear-gradient(180deg, #dcb459 0%, #d6aa4c 45%, #b8893a 100%);
+    --btn-fg: #060a11; --btn-line: #a87d33; --btn-line-hover: #a87d33;
+    --btn-filete: rgba(255, 240, 200, 0.35);
 }
-/* Grano y motas del pan de oro */
-.btn.primary::before {
-    content: ''; position: absolute; inset: 0; z-index: -1; border-radius: inherit; pointer-events: none;
-    background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.95' numOctaves='3' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 0.3 0 0 0 0 0.18 0 0 0 0 0.04 0 0 0 0.9 -0.25'/%3E%3C/filter%3E%3Crect width='160' height='160' filter='url(%23n)'/%3E%3C/svg%3E");
-    mix-blend-mode: multiply; opacity: 0.55;
-}
-/* Filete grabado por dentro, como el aro dorado del lacre */
-.btn.primary::after {
-    content: ''; position: absolute; inset: 4px; z-index: -1; border-radius: inherit; pointer-events: none;
-    border: 1px solid rgba(96, 60, 16, 0.5);
-    box-shadow: 0 1px 0 rgba(255, 230, 170, 0.4), inset 0 1px 0 rgba(255, 230, 170, 0.25);
-}
-.btn.primary:hover:not(:disabled) { background-position: -30% 0, 0 0, 0 0, 0 0; filter: brightness(1.04); }
-.btn.primary:active:not(:disabled) {
-    transform: translateY(1px);
-    box-shadow: inset 0 2px 6px rgba(70, 40, 8, 0.55), inset 0 -1px 0 rgba(255, 236, 190, 0.35), 0 1px 0 rgba(0, 0, 0, 0.5);
-}
-/* Desactivado: como el resto, sin oro (contorno discontinuo), para que no parezca listo */
-.btn.primary:disabled { background: transparent; box-shadow: none; text-shadow: none; color: var(--muted); }
-.btn.primary:disabled::before, .btn.primary:disabled::after { display: none; }
-@media (prefers-reduced-motion: reduce) { .btn.primary { transition: none; } }
+.btn.primary:hover:not(:disabled) { filter: brightness(1.06); }
 .btn.danger {
     --btn-bg: linear-gradient(180deg, #a8323a 0%, #9e2c32 50%, #8a252b 100%);
     --btn-fg: var(--text); --btn-line: #6e1d22; --btn-line-hover: #6e1d22;
