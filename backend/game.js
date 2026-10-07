@@ -35,13 +35,22 @@ const DEFAULT_CONFIG = {
         enabled: true,
         perVote: 1,
         perElimination: 2,
+        // auto: los umbrales se calculan con el calendario y el número de jugadores
+        auto: true,
         thresholds: [
-            { skulls: 18, percent: 50 },
-            { skulls: 26, percent: 75 },
-            { skulls: 33, percent: 100 }
+            { skulls: 8, percent: 50 },
+            { skulls: 12, percent: 75 },
+            { skulls: 16, percent: 100 }
         ]
     }
 };
+
+// Fracción del máximo teórico de calaveras que hace falta para cada umbral automático
+const GHOST_AUTO_STEPS = [
+    { factor: 0.3, percent: 50 },
+    { factor: 0.45, percent: 75 },
+    { factor: 0.6, percent: 100 }
+];
 
 const PRESETS = {
     clasico: {
@@ -122,6 +131,7 @@ function normalizeConfig(input = {}) {
             enabled: g.enabled !== false,
             perVote: clampInt(g.perVote, 0, 10, d.ghosts.perVote),
             perElimination: clampInt(g.perElimination, 0, 20, d.ghosts.perElimination),
+            auto: g.auto !== false,
             thresholds: thresholds.length ? thresholds : d.ghosts.thresholds
         }
     };
@@ -131,6 +141,39 @@ function autoTraitorCount(players) {
     if (players < 6) return 1;
     if (players < 11) return 2;
     return 3;
+}
+
+// Máximo teórico de calaveras: el objetivo recibe todos los votos en cada mesa y cae una vez al día.
+// Solo cuentan los días que empiezan con algún muerto, porque el objetivo se asigna al amanecer.
+function ghostMaxSkulls(config, players) {
+    const { perVote, perElimination } = config.ghosts;
+    let alive = players;
+    let dead = 0;
+    let max = 0;
+    config.schedule.forEach(day => {
+        const active = dead > 0;
+        let dayVotes = 0;
+        for (let r = 0; r < day.roundtable && alive > 1; r++) {
+            dayVotes += alive - 1;
+            alive -= 1;
+            dead += 1;
+        }
+        if (active && day.roundtable > 0) max += dayVotes * perVote + perElimination;
+        const kills = Math.min(day.conclave, Math.max(0, alive - 1));
+        alive -= kills;
+        dead += kills;
+    });
+    return max;
+}
+
+function autoGhostThresholds(config, players) {
+    const max = ghostMaxSkulls(config, players);
+    let last = 0;
+    return GHOST_AUTO_STEPS.map(({ factor, percent }) => {
+        const skulls = Math.max(last + 1, Math.round(max * factor));
+        last = skulls;
+        return { skulls, percent };
+    });
 }
 
 function ghostLootPercent(skulls, thresholds) {
@@ -163,6 +206,7 @@ function createState(config = {}, tests = []) {
         roundsDone: 0,
         nightVotes: {}, // traidorId -> [víctimas]
         nightOverride: null, // víctimas decididas por el MC
+        suspicions: {}, // jugadorId -> sospechoso de esta noche (todos los vivos)
         invitation: { status: 'none', targetId: null },
         winner: null, // 'loyal' | 'traitor'
         events: [], // registro público de lo sucedido
@@ -199,6 +243,14 @@ class Game {
     today() { return this.config.schedule[this.state.day - 1] || { roundtable: 0, conclave: 0 }; }
     isLastDay() { return this.state.day >= this.config.days; }
     treasure() { return this.state.tests.reduce((sum, t) => sum + (t.score || 0), 0); }
+
+    // Con menos de 4 apuntados se calcula como si fueran 12, para que la sala de espera muestre algo razonable
+    ghostThresholds() {
+        const g = this.config.ghosts;
+        if (!g.auto) return g.thresholds;
+        const n = this.state.players.length;
+        return autoGhostThresholds(this.config, n >= MIN_PLAYERS ? n : 12);
+    }
 
     requirePlayer(id, { alive = true } = {}) {
         const p = this.getPlayer(id);
@@ -341,11 +393,13 @@ class Game {
         s.phase = 'night';
         s.nightVotes = {};
         s.nightOverride = null;
+        s.suspicions = {};
         s.conclaveOverride = false;
     }
 
     dawn() {
         const s = this.state;
+        const killsTonight = this.today().conclave;
         if (s.invitation.status === 'pending') s.invitation.status = 'expired';
         const victims = this.computeNightVictims();
         s.day += 1;
@@ -353,8 +407,9 @@ class Game {
         s.roundsDone = 0;
         s.nightVotes = {};
         s.nightOverride = null;
+        s.suspicions = {};
         victims.forEach(p => this.eliminate(p, 'murder', s.day - 1));
-        if (victims.length === 0) this.log('nomurder', 'Esta noche no ha habido asesinatos');
+        if (victims.length === 0 && killsTonight > 0) this.log('nomurder', 'Esta noche no ha habido asesinatos');
         if (!this.checkGameOver()) this.assignGhostTarget();
     }
 
@@ -363,7 +418,8 @@ class Game {
         player.eliminatedBy = by;
         player.eliminatedDay = day;
         const reveal = this.config.revealRole ? ` Era ${player.role === 'traitor' ? 'de los ' + this.config.factions.traitor : 'de los ' + this.config.factions.loyal}.` : '';
-        this.log(by, by === 'murder' ? `${player.name} ha sido asesinado.` : `${player.name} ha sido desterrado.${reveal}`, { playerId: player.id });
+        const name = player.name.replace(/\.+$/, ''); // «Adri C.» no debe acabar en «..»
+        this.log(by, by === 'murder' ? `Han asesinado a ${name}.` : `La mesa destierra a ${name}.${reveal}`, { playerId: player.id });
         const g = this.state.ghosts;
         if (by === 'banish' && g.today && g.today.targetId === player.id && this.config.ghosts.enabled) {
             g.today.eliminated = true;
@@ -408,6 +464,7 @@ class Game {
         if (s.round.candidates && !s.round.candidates.includes(targetId)) {
             throw new GameError('En el desempate solo se puede votar a los empatados');
         }
+        if (s.round.votes[voterId]) throw new GameError('Tu voto ya está registrado');
         s.round.votes[voterId] = targetId;
         if (this.alive().every(p => s.round.votes[p.id])) this.resolveRound();
     }
@@ -428,7 +485,8 @@ class Game {
         this.requirePhase('roundtable');
         if (!s.round) throw new GameError('No hay ninguna votación abierta');
         const tally = this.roundTally();
-        this.scoreGhostVotes(tally[s.ghosts.today?.targetId] || 0);
+        // Solo puntúa la primera votación de cada mesa: los desempates no vuelven a sumar
+        if (s.round.revotes === 0) this.scoreGhostVotes(tally[s.ghosts.today?.targetId] || 0);
         const counts = Object.values(tally);
         if (counts.length === 0) return this.endRound(null, 'Nadie ha votado: no se destierra a nadie');
         const max = Math.max(...counts);
@@ -452,10 +510,16 @@ class Game {
         if (!s.round) throw new GameError('No hay ninguna votación abierta');
         const p = this.getPlayer(playerId);
         if (!p || !p.alive) throw new GameError('Jugador no válido');
+        const target = this.ghostTargetToday();
         if (this.config.voting === 'app') {
-            this.scoreGhostVotes(this.roundTally()[s.ghosts.today?.targetId] || 0);
-        } else if (targetVotes !== undefined && targetVotes !== null && targetVotes !== '') {
-            this.scoreGhostVotes(clampInt(targetVotes, 0, 100, 0));
+            if (s.round.revotes === 0) this.scoreGhostVotes(this.roundTally()[target?.id] || 0);
+        } else if (target) {
+            // En persona el MC debe decir cuántos votos recibió el objetivo de los Fantasmas
+            const n = clampInt(targetVotes, 0, 100, null);
+            if (targetVotes === undefined || targetVotes === null || targetVotes === '' || n === null) {
+                throw new GameError(`Indica cuántos votos ha recibido ${target.name}`);
+            }
+            this.scoreGhostVotes(n);
         }
         this.endRound(p.id);
     }
@@ -478,6 +542,29 @@ class Game {
             this.log('novote', reason, tally ? { tally } : {});
         }
         if (s.roundsDone < this.today().roundtable) this.startRound();
+    }
+
+    // ----- Sospechas nocturnas -----
+    // Todos los vivos señalan a un sospechoso por la noche: así la pantalla de un Felón
+    // se parece a la de cualquiera y nadie se delata por lo que hace con el móvil.
+
+    suspect(playerId, targetId) {
+        const s = this.state;
+        this.requirePhase('night');
+        this.requirePlayer(playerId);
+        if (targetId === null) { delete s.suspicions[playerId]; return; }
+        if (playerId === targetId) throw new GameError('No puedes señalarte a ti mismo');
+        const target = this.getPlayer(targetId);
+        if (!target || !target.alive) throw new GameError('Jugador no válido');
+        s.suspicions[playerId] = targetId;
+    }
+
+    suspicionTally() {
+        const tally = {};
+        Object.entries(this.state.suspicions || {}).forEach(([voterId, targetId]) => {
+            if (this.getPlayer(voterId)?.alive && this.getPlayer(targetId)?.alive) tally[targetId] = (tally[targetId] || 0) + 1;
+        });
+        return tally;
     }
 
     // ----- Cónclave -----
@@ -563,11 +650,19 @@ class Game {
         const g = this.state.ghosts;
         g.today = null;
         if (!this.config.ghosts.enabled || this.dead().length === 0) return null;
-        const candidates = this.aliveLoyals();
+        // Cualquier vivo, de cualquier bando: así el objetivo no confirma a nadie como inocente
+        const candidates = this.alive();
         if (candidates.length === 0) return null;
         const target = candidates[Math.floor(this.random() * candidates.length)];
         g.today = { day: this.state.day, targetId: target.id, votes: 0, eliminated: false, skulls: 0 };
         return target;
+    }
+
+    ghostTargetToday() {
+        const g = this.state.ghosts;
+        if (!this.config.ghosts.enabled || !g.today) return null;
+        const p = this.getPlayer(g.today.targetId);
+        return p && p.alive ? p : null;
     }
 
     addSkulls(n) {
@@ -591,7 +686,7 @@ class Game {
 
     ghostSummary() {
         const g = this.state.ghosts;
-        const { thresholds } = this.config.ghosts;
+        const thresholds = this.ghostThresholds();
         const percent = ghostLootPercent(g.skulls, thresholds);
         const name = id => this.getPlayer(id)?.name || '?';
         const treasure = this.treasure();
@@ -604,6 +699,7 @@ class Game {
             thresholds,
             perVote: this.config.ghosts.perVote,
             perElimination: this.config.ghosts.perElimination,
+            auto: this.config.ghosts.auto,
             history: g.history.map(h => ({ ...h, targetName: name(h.targetId) }))
         };
     }
@@ -763,6 +859,7 @@ class Game {
             role: p.role,
             myVote: s.round?.votes[p.id] || null,
             invitationPending: s.invitation.status === 'pending' && s.invitation.targetId === p.id,
+            mySuspect: (s.suspicions || {})[p.id] || null,
             inbox: s.inbox[p.id] || []
         };
         if (p.role === 'traitor') {
@@ -794,6 +891,8 @@ class Game {
             roundTally: s.round ? this.roundTally() : {},
             nightVotes: s.nightVotes,
             nightTally: this.nightTally(),
+            suspicionTally: this.suspicionTally(),
+            suspicionCount: Object.keys(s.suspicions || {}).length,
             nightOverride: s.nightOverride,
             invitation: s.invitation,
             conclaveOverride: s.conclaveOverride,
@@ -810,6 +909,8 @@ module.exports = {
     createState,
     normalizeConfig,
     ghostLootPercent,
+    ghostMaxSkulls,
+    autoGhostThresholds,
     isWithinHours,
     autoTraitorCount,
     PRESETS,

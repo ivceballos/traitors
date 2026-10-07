@@ -303,6 +303,12 @@ io.on('connection', (socket) => {
         broadcast(room);
     });
 
+    on('suspect', async ({ targetId }) => {
+        const { room, game, id } = await asPlayer();
+        game.suspect(id, targetId ?? null);
+        broadcast(room);
+    });
+
     on('night-vote', async ({ victimIds }) => {
         const { room, game, id } = await asPlayer();
         game.nightVote(id, victimIds);
@@ -356,6 +362,11 @@ io.on('connection', (socket) => {
     master('mc:kick', ({ room, game }, { playerId }) => {
         game.removePlayer(playerId);
         io.to(playerRoom(room.code, playerId)).emit('kicked');
+    });
+    // Enlace de reentrada de un jugador (móvil perdido, sin batería, otro dispositivo)
+    master('mc:player-link', ({ room, game }, { playerId }) => {
+        if (!game.getPlayer(playerId)) throw new GameError('Jugador no encontrado');
+        return { token: signPlayer(room.code, playerId) };
     });
     master('mc:test-add', ({ game }, test) => { game.addTest(test); });
     master('mc:test-update', ({ game }, { id, changes }) => { game.updateTest(id, changes || {}); });

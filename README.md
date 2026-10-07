@@ -28,7 +28,9 @@ Incluye la plantilla **Fieles y Felones** (12 jugadores, calendario 0 → 1+1 �
 
 ### La Sociedad Secreta de los Fantasmas
 
-Mecánica secreta: nadie la conoce hasta que muere. Cada amanecer los eliminados reciben un objetivo, un jugador bueno elegido al azar. Ganan calaveras por cada voto que reciba en la mesa redonda (1 por voto y 2 más si lo destierran). Con 18, 26 o 33 calaveras roban el 50 %, 75 % o 100 % del botín final. Todo es configurable. Tienen su propio chat y su panel, y la revelación llega en la pantalla final.
+Mecánica secreta: nadie la conoce hasta que muere. Cada amanecer los eliminados reciben un objetivo, un jugador vivo de cualquier bando elegido al azar. Ganan calaveras por cada voto que reciba en la primera votación de cada mesa redonda (1 por voto y 2 más si lo destierran); los desempates y «No sale nadie» no suman. Los umbrales para robar el 50 %, 75 % o 100 % del botín final se calculan con el calendario y el número de jugadores (con la plantilla de la despedida y 12 jugadores: 8, 12 y 16 calaveras), o se fijan a mano. Si se vota en persona, el MC debe indicar cuántos votos recibió el objetivo. Tienen su propio chat y su panel, y la revelación llega siempre en la pantalla final.
+
+De noche, todos los vivos señalan a un sospechoso, así ninguna pantalla se distingue de la de un Felón. Lo secreto (carta, aliados, cónclave y chat de los Felones) vive detrás del botón «Mi rol», que tienen todos. El voto de la mesa redonda es definitivo al confirmarlo, y el MC tiene los roles ocultos por defecto.
 
 ## Pantallas
 

@@ -1,11 +1,11 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import {
-    Check, DeviceMobile, Envelope, Eye, Gavel, Ghost, HourglassMedium, Knife, MoonStars, Scales, Skull, SunHorizon, Trophy
+    Check, DeviceMobile, Envelope, Eye, EyeSlash, Gavel, Ghost, HourglassMedium, Knife, MoonStars, PaperPlaneRight, Scales, SunHorizon, Trophy
 } from '@phosphor-icons/react';
 import { formatEuros, formatGold, playerTokenKey, send, socket, storage } from '../api';
 import {
-    Art, Avatar, CopyBox, Loading, Modal, Seal, OfflineBanner, PhotoPicker, RoleTag, TestsTable, Thresholds, Toasts,
+    ActionButton, Art, Avatar, CopyBox, HoldButton, Loading, Modal, Seal, OfflineBanner, PhotoPicker, RoleTag, TestsTable, Thresholds, Toasts,
     useConnection, useSocketEvent, useToasts
 } from '../components';
 
@@ -97,13 +97,14 @@ export default function Player() {
         }
     };
 
+    const sheetOpen = showRole && me && me.role && view && status === 'joined';
     let content;
     if (status === 'missing') {
         content = (
             <div className="page narrow stack" style={{ paddingTop: 64 }}>
                 <h1>Código no válido</h1>
                 <p className="muted">No existe ninguna partida con el código {code}.</p>
-                <Link className="btn primary" to="/">Volver</Link>
+                <Link className="btn" to="/">Volver</Link>
             </div>
         );
     } else if (!view || status === 'checking' || (status === 'joined' && !me)) {
@@ -111,7 +112,7 @@ export default function Player() {
     } else if (status === 'join') {
         content = <JoinScreen view={view} code={code} onJoined={() => setStatus('joined')} onError={m => push(m, 'error')} />;
     } else {
-        content = <Game view={view} me={me} chat={chat} act={act} onShowRole={() => setShowRole(true)} code={code} push={push} />;
+        content = <Game view={view} me={me} chat={chat} act={act} onShowRole={() => { setShowRole(true); window.scrollTo(0, 0); }} code={code} push={push} />;
     }
 
     const ghostKey = me && `ghost-seen:${code}:${me.playerId}`;
@@ -120,12 +121,13 @@ export default function Player() {
     return (
         <>
             <OfflineBanner connected={connected} />
-            {content}
-            {showRole && me && me.role && view && (
-                <RoleModal me={me} view={view} onClose={() => { storage.set(roleSeenKey, '1'); setShowRole(false); }} />
-            )}
+            {/* Con «Mi rol» abierto no se pinta nada más: ni debajo queda información */}
+            {sheetOpen ? (
+                <SecretSheet me={me} view={view} chat={chat} act={act} self={view.players.find(p => p.id === me.playerId) || { alive: false }}
+                    onClose={() => { storage.set(roleSeenKey, '1'); setShowRole(false); window.scrollTo(0, 0); }} />
+            ) : content}
             {me && me.invitationPending && <InvitationModal view={view} act={act} />}
-            {showGhostWelcome && !showRole && (
+            {showGhostWelcome && !sheetOpen && (
                 <GhostWelcome onClose={() => { storage.set(ghostKey, '1'); forceRender(n => n + 1); }} />
             )}
             <Toasts toasts={toasts} dismiss={dismiss} />
@@ -156,7 +158,7 @@ function JoinScreen({ view, code, onJoined, onError }) {
     return (
         <div className="page narrow stack">
             <header style={{ padding: '32px 0 8px' }}>
-                <span className="tag">Partida {code}</span>
+                <span className="tag">Partida <span className="room-code" style={{ fontSize: 'inherit' }}>{code}</span></span>
                 <h1 style={{ marginTop: 14 }}>{view.name}</h1>
             </header>
             {view.phase === 'lobby' ? (
@@ -166,14 +168,15 @@ function JoinScreen({ view, code, onJoined, onError }) {
                         <span>Tu nombre</span>
                         <input className="input" value={name} maxLength={24} onChange={e => setName(e.target.value)} autoComplete="given-name" />
                     </label>
-                    <button className="btn primary block lg" disabled={busy || !name.trim()}>Unirme</button>
+                    <button className="btn primary block lg" disabled={busy || !name.trim()}>{busy ? <><span className="spinner-sm" />Enviando…</> : 'Unirme'}</button>
+                    {!name.trim() && <p className="btn-hint m0">Escribe tu nombre</p>}
                 </form>
             ) : (
                 <p className="note accent">La partida ya ha empezado. Si ya estabas jugando, abre tu enlace personal desde el móvil con el que te uniste.</p>
             )}
             {view.players.length > 0 && (
                 <section className="section">
-                    <h3>Ya están dentro ({view.players.length})</h3>
+                    <h3>Ya están dentro (<span className="num">{view.players.length}</span>)</h3>
                     <PlayerGrid players={view.players} factions={view.factions} />
                 </section>
             )}
@@ -183,61 +186,80 @@ function JoinScreen({ view, code, onJoined, onError }) {
 
 // ---------- Partida ----------
 
+const TAB_LABELS = { players: 'Jugadores', loot: 'Botín', events: 'Sucesos', chat: 'Chat' };
+
 function Game({ view, me, chat, act, onShowRole, code, push }) {
     const self = view.players.find(p => p.id === me.playerId) || { alive: false, name: '' };
-    const isTraitor = me.role === 'traitor';
-
     if (view.phase === 'end') return <EndScreen view={view} me={me} chat={chat} self={self} act={act} />;
+    const dead = !self.alive && view.phase !== 'lobby';
 
     return (
         <>
-            <TopBar view={view} self={self} me={me} onShowRole={onShowRole} />
+            <TopBar view={view} onShowRole={onShowRole} hasRole={!!me.role} />
             <div className="page stack">
                 <PhaseBlock view={view} me={me} self={self} />
 
+                {/* Lo que toca hacer ahora va siempre arriba */}
                 {view.spotlight && <SpotlightCard view={view} />}
+                {me.inbox.length > 0 && <Inbox inbox={me.inbox} />}
                 {view.phase === 'lobby' && <Lobby view={view} self={self} act={act} push={push} />}
                 {view.phase === 'roundtable' && self.alive && <RoundtablePanel view={view} me={me} act={act} />}
-                {view.phase === 'night' && isTraitor && self.alive && <ConclavePanel view={view} me={me} act={act} />}
-                {me.ghostSociety && <GhostPanel ghost={me.ghostSociety} />}
-                {me.inbox.length > 0 && <Inbox inbox={me.inbox} />}
+                {view.phase === 'night' && self.alive && <SuspectPanel view={view} me={me} act={act} />}
+                {dead && me.ghostSociety && <GhostPanel ghost={me.ghostSociety} />}
 
-                {view.phase !== 'lobby' && (
-                    <div className="cols">
-                        <div className="stack">
-                            <section className="card">
-                                <div className="row between" style={{ marginBottom: 14 }}>
-                                    <h3 className="m0">Jugadores</h3>
-                                    <span className="small muted">{view.players.filter(p => p.alive).length} vivos</span>
-                                </div>
-                                <PlayerGrid players={view.players} factions={view.factions} meId={me.playerId} allies={isTraitor ? me.allies : null} />
-                            </section>
-                            <Treasure view={view} />
-                            {view.events.length > 0 && <Events events={view.events} />}
-                        </div>
-                        <div className="stack">
-                            <Chat me={me} self={self} view={view} chat={chat} act={act} />
-                            <DeviceLink code={code} />
-                        </div>
-                    </div>
-                )}
+                {view.phase !== 'lobby' && <MainTabs view={view} me={me} self={self} chat={chat} act={act} />}
+                <DeviceLink code={code} />
             </div>
         </>
     );
 }
 
-function TopBar({ view, self, me, onShowRole }) {
+// Jugadores, botín, sucesos y chat plegados en pestañas para que la pantalla no sea un rollo
+function MainTabs({ view, me, self, chat, act }) {
+    const dead = !self.alive;
+    const channels = ['general', ...(dead ? ['dead'] : [])];
+    const tabs = ['players', ...(view.tests.length > 0 ? ['loot'] : []), 'events', 'chat'];
+    const [tab, setTab] = useState('players');
+    const [seen, setSeen] = useState(() => Object.fromEntries(channels.map(ch => [ch, (chat[ch] || []).length])));
+    const unread = channels.reduce((n, ch) => n + Math.max(0, (chat[ch] || []).length - (seen[ch] || 0)), 0);
+    const active = tabs.includes(tab) ? tab : 'players';
+    return (
+        <section className="stack-sm">
+            <div className="tabs panel-tabs" role="tablist">
+                {tabs.map(t => (
+                    <button key={t} role="tab" aria-selected={active === t} className={`tab ${active === t ? 'on' : ''}`} onClick={() => setTab(t)}>
+                        {TAB_LABELS[t]}{t === 'chat' && active !== 'chat' && unread > 0 && <span className="unread">{unread}</span>}
+                    </button>
+                ))}
+            </div>
+            {active === 'players' && (
+                <section className="card">
+                    <div className="row between" style={{ marginBottom: 14 }}>
+                        <h3 className="m0">Jugadores</h3>
+                        <span className="small muted"><span className="num">{view.players.filter(p => p.alive).length}</span> vivos</span>
+                    </div>
+                    <PlayerGrid players={view.players} factions={view.factions} meId={me.playerId} />
+                </section>
+            )}
+            {active === 'loot' && <Treasure view={view} />}
+            {active === 'events' && <Events events={view.events} />}
+            {active === 'chat' && (
+                <Chat me={me} view={view} chat={chat} act={act} channels={channels} initial={dead ? 'dead' : 'general'}
+                    onSeen={(ch, n) => setSeen(s => (s[ch] === n ? s : { ...s, [ch]: n }))} />
+            )}
+        </section>
+    );
+}
+
+function TopBar({ view, onShowRole, hasRole }) {
     return (
         <div className="topbar">
             <div className="topbar-inner">
-                <span className="brand">{view.code}</span>
-                {view.phase !== 'lobby' && <span className="tag">Día {view.day} de {view.days}</span>}
+                <span className="room-code">{view.code}</span>
+                {view.phase !== 'lobby' && <span className="tag">Día <span className="num">{view.day}</span> de <span className="num">{view.days}</span></span>}
                 <span className="grow" />
-                {me.role && (
-                    <button className="btn sm" onClick={onShowRole}>
-                        {self.alive ? <><Eye size={18} /> Mi rol</> : <><Skull size={18} /> Eliminado</>}
-                    </button>
-                )}
+                {/* Todos tienen el mismo botón: lo secreto (aliados, cónclave) vive detrás */}
+                {hasRole && <button className="btn sm" onClick={onShowRole}><Eye size={18} /> Mi rol</button>}
             </div>
         </div>
     );
@@ -245,40 +267,49 @@ function TopBar({ view, self, me, onShowRole }) {
 
 const PHASE_ICON = { lobby: HourglassMedium, day: SunHorizon, roundtable: Scales, night: MoonStars, end: Trophy };
 
+// Título de la fase y una línea de «qué toca ahora». De noche es igual para todos los bandos.
 function PhaseBlock({ view, me, self }) {
-    const isTraitor = me.role === 'traitor';
     const alive = view.players.filter(p => p.alive).length;
     let title = 'Sala de espera';
     let text = 'Esperando a que el MC empiece la partida.';
+    let now = null;
     switch (view.phase) {
         case 'day':
             title = `Día ${view.day}`;
             text = view.today.roundtable > 0
                 ? `Hoy hay mesa redonda: ${view.today.roundtable === 1 ? 'un destierro' : `${view.today.roundtable} destierros`}.`
                 : 'Hoy no hay mesa redonda. Observad bien a los demás.';
+            now = 'Habla, observa y espera a que el MC abra la mesa.';
             break;
         case 'roundtable':
             title = view.round && view.round.candidates ? 'Desempate' : 'Mesa redonda';
-            text = view.voting === 'inperson'
-                ? 'Votad en voz alta. El MC registrará el resultado.'
-                : view.round ? `Han votado ${view.round.voters.length} de ${alive}.` : 'Votación cerrada.';
+            if (view.voting === 'inperson') {
+                text = 'Votad en voz alta. El MC registrará el resultado.';
+                now = 'Escucha, acusa y vota cuando lo pida el MC.';
+            } else {
+                text = view.round ? `Han votado ${view.round.voters.length} de ${alive}.` : 'Votación cerrada.';
+                now = view.round ? (me.myVote ? 'Ya has votado. Espera al resto.' : 'Elige abajo y confirma tu voto. No se puede cambiar.') : 'Espera al MC.';
+            }
             if (view.round && view.today.roundtable > 1) text = `Votación ${view.round.number} de ${view.today.roundtable}. ${text}`;
             break;
         case 'night':
             title = 'Noche';
-            text = isTraitor && self.alive
-                ? (view.conclaveOpen ? 'El cónclave está abierto.' : `El cónclave abre de ${view.conclaveHours.start} a ${view.conclaveHours.end}.`)
-                : `Los ${view.factions.traitor} se reúnen en secreto.`;
+            text = `Los ${view.factions.traitor} se reúnen en secreto.`;
+            now = 'Señala abajo a tu sospechoso. Si tienes algo más que hacer esta noche, está en «Mi rol».';
             break;
         default:
     }
-    if (!self.alive && view.phase !== 'lobby') text = 'Has sido eliminado. Ya no compites, pero sigues dentro del juego.';
+    if (!self.alive && view.phase !== 'lobby') {
+        text = 'Te han eliminado. Ya no compites, pero sigues dentro del juego.';
+        now = me.ghostSociety?.target ? `Objetivo de hoy: ${me.ghostSociety.target.name}.` : null;
+    }
     const Icon = PHASE_ICON[view.phase];
     return (
         <header className={`phase ${view.phase}`}>
             <span className="display">{title}</span>
             <Icon size={36} weight="light" className="phase-icon" />
             <p className="phase-text m0">{text}</p>
+            {now && <p className="now m0" style={{ gridColumn: '1 / -1' }}>{now}</p>}
         </header>
     );
 }
@@ -294,15 +325,14 @@ function Lobby({ view, self, act, push }) {
                 onError={m => push(m, 'error')}
             />
             <div className="section">
-                <h3>En la sala ({view.players.length})</h3>
+                <h3>En la sala (<span className="num">{view.players.length}</span>)</h3>
                 <PlayerGrid players={view.players} factions={view.factions} meId={self.id} />
             </div>
         </section>
     );
 }
 
-function PlayerGrid({ players, factions, meId, allies, onPick, selected = [], pickable, corner, revealAll }) {
-    const allyIds = new Set((allies || []).map(a => a.id));
+function PlayerGrid({ players, factions, meId, onPick, selected = [], pickable, note, revealAll, kill }) {
     return (
         <div className="player-grid">
             {players.map(p => {
@@ -312,13 +342,12 @@ function PlayerGrid({ players, factions, meId, allies, onPick, selected = [], pi
                     <Tag
                         key={p.id}
                         type={onPick ? 'button' : undefined}
-                        className={`player-tile ${p.alive ? '' : 'dead'} ${selected.includes(p.id) ? 'selected' : ''}`}
+                        className={`player-tile ${p.alive ? '' : 'dead'} ${selected.includes(p.id) ? 'selected' : ''} ${kill ? 'kill' : ''}`}
                         onClick={canPick ? () => onPick(p) : undefined}
                         disabled={onPick ? !canPick : undefined}
                         style={onPick && !canPick ? { opacity: 0.3 } : undefined}
                     >
                         <Avatar player={p} size={64} />
-                        {corner && corner(p)}
                         <span className="name">{p.name}{p.id === meId ? ' (tú)' : ''}</span>
                         {!p.alive && (
                             <span className="sub">
@@ -326,8 +355,8 @@ function PlayerGrid({ players, factions, meId, allies, onPick, selected = [], pi
                                 Día {p.eliminatedDay}
                             </span>
                         )}
+                        {note && note(p)}
                         {(!p.alive || revealAll) && p.role && <RoleTag role={p.role} factions={factions} />}
-                        {p.alive && allyIds.has(p.id) && p.id !== meId && <span className="sub accent">Aliado</span>}
                     </Tag>
                 );
             })}
@@ -342,9 +371,9 @@ function RoundtablePanel({ view, me, act }) {
     if (view.voting !== 'app' || !view.round) return null;
     const candidates = view.round.candidates;
     const myVote = me.myVote && view.players.find(p => p.id === me.myVote);
-    const pickable = p => p.alive && p.id !== me.playerId && (!candidates || candidates.includes(p.id));
+    const pickable = p => !myVote && p.alive && p.id !== me.playerId && (!candidates || candidates.includes(p.id));
     const voters = new Set(view.round.voters);
-    const chosen = pick && pick !== me.myVote ? view.players.find(p => p.id === pick) : null;
+    const chosen = !myVote && pick ? view.players.find(p => p.id === pick) : null;
     return (
         <section className="card hot stack">
             <h3 className="m0">{candidates ? 'Desempate: solo entre los empatados' : 'Tu voto'}</h3>
@@ -352,20 +381,46 @@ function RoundtablePanel({ view, me, act }) {
                 players={view.players.filter(p => p.alive)}
                 factions={view.factions}
                 meId={me.playerId}
-                onPick={p => setPick(p.id)}
+                onPick={myVote ? undefined : p => setPick(p.id)}
                 pickable={pickable}
-                selected={[pick || me.myVote].filter(Boolean)}
-                corner={p => (voters.has(p.id) ? <span className="corner" title="Ya ha votado"><Check size={13} weight="bold" /></span> : null)}
+                selected={[myVote ? myVote.id : pick].filter(Boolean)}
+                note={p => (voters.has(p.id) ? <span className="sub voted"><Check size={12} weight="bold" /> ya votó</span> : null)}
             />
-            {chosen ? (
-                <button className="btn danger block lg" onClick={async () => { if (await act('vote', { targetId: chosen.id })) setPick(null); }}>
-                    Votar a {chosen.name}
-                </button>
+            {myVote ? (
+                <p className="note accent m0">Has votado a <strong>{myVote.name}</strong>. Tu voto es definitivo.</p>
             ) : (
-                <p className="small muted m0">
-                    {myVote ? `Has votado a ${myVote.name}. Puedes cambiarlo hasta que voten todos.` : 'Toca a quien creas que es uno de los ' + view.factions.traitor + '.'}
-                </p>
+                <ActionButton className="primary block lg" disabled={!chosen} hint="Elige a alguien de la mesa"
+                    onClick={async () => { if (await act('vote', { targetId: chosen.id })) { setPick(null); return true; } return false; }}>
+                    {chosen ? `Confirmar voto a ${chosen.name}` : 'Confirmar voto'}
+                </ActionButton>
             )}
+        </section>
+    );
+}
+
+// ---------- Noche: todos señalan a un sospechoso ----------
+
+function SuspectPanel({ view, me, act }) {
+    const [pick, setPick] = useState(null);
+    const current = me.mySuspect && view.players.find(p => p.id === me.mySuspect);
+    const chosen = pick && pick !== me.mySuspect ? view.players.find(p => p.id === pick) : null;
+    return (
+        <section className="card stack">
+            <h3 className="m0">¿De quién sospechas?</h3>
+            <p className="small muted m0">Nadie verá tu elección. Solo el MC conoce el recuento de la noche.</p>
+            <PlayerGrid
+                players={view.players.filter(p => p.alive)}
+                factions={view.factions}
+                meId={me.playerId}
+                onPick={p => setPick(p.id)}
+                pickable={p => p.id !== me.playerId}
+                selected={[pick || me.mySuspect].filter(Boolean)}
+            />
+            {current && !chosen && <p className="small muted m0">Tu sospechoso esta noche: <strong>{current.name}</strong>. Puedes cambiarlo.</p>}
+            <ActionButton className={current ? 'block' : 'primary block'} disabled={!chosen} hint={current ? null : 'Toca a alguien'}
+                onClick={async () => { if (await act('suspect', { targetId: chosen.id })) { setPick(null); return true; } return false; }}>
+                {chosen ? `Señalar a ${chosen.name}` : 'Señalar'}
+            </ActionButton>
         </section>
     );
 }
@@ -378,7 +433,7 @@ function ConclavePanel({ view, me, act }) {
     useEffect(() => setPicks(c.myVotes), [c.myVotes]);
 
     if (!view.conclaveOpen) {
-        return <p className="note">El cónclave está cerrado. Abre de {view.conclaveHours.start} a {view.conclaveHours.end}.</p>;
+        return <p className="note felon">El cónclave está cerrado. Abre de {view.conclaveHours.start} a {view.conclaveHours.end}.</p>;
     }
 
     const allyIds = new Set(me.allies.map(a => a.id));
@@ -389,11 +444,11 @@ function ConclavePanel({ view, me, act }) {
     const inv = c.invitation;
 
     return (
-        <section className="card hot stack">
+        <section className="card felon stack">
             <h3 className="m0">Cónclave de los {view.factions.traitor}</h3>
             {inv.available && <Recruit view={view} targets={targets} act={act} />}
             {inv.status === 'pending' && <p className="note m0">Invitación enviada a {inv.targetName}. Esperando su respuesta.</p>}
-            {inv.status === 'accepted' && <p className="note accent m0">{inv.targetName} se ha unido a vosotros.</p>}
+            {inv.status === 'accepted' && <p className="note felon m0">{inv.targetName} se ha unido a vosotros.</p>}
             {inv.status === 'rejected' && <p className="note m0">{inv.targetName} ha rechazado la invitación.</p>}
 
             {c.kills > 0 ? (
@@ -401,11 +456,12 @@ function ConclavePanel({ view, me, act }) {
                     <p className="small muted m0">
                         {c.kills === 1 ? 'Elegid a la víctima de esta noche.' : `Elegid a las ${c.kills} víctimas de esta noche.`} Cuenta la elección más votada y se sabrá al amanecer.
                     </p>
-                    <PlayerGrid players={targets} factions={view.factions} onPick={toggle} selected={picks} />
+                    <PlayerGrid players={targets} factions={view.factions} onPick={toggle} selected={picks} kill />
+                    {c.myVotes.length > 0 && !changed && <p className="small m0">Tu elección: <strong>{names(c.myVotes)}</strong>.</p>}
                     {changed && (
-                        <button className="btn danger block lg" disabled={picks.length === 0} onClick={() => act('night-vote', { victimIds: picks })}>
-                            <Knife size={20} /> {names(picks)}
-                        </button>
+                        <HoldButton className="block lg" disabled={picks.length === 0} onConfirm={() => act('night-vote', { victimIds: picks })}>
+                            <Knife size={20} /> <span>{picks.length ? names(picks) : 'Elige a alguien'}</span>
+                        </HoldButton>
                     )}
                     {c.votes.length > 0 && (
                         <ul className="event-list">
@@ -424,8 +480,8 @@ function Recruit({ view, targets, act }) {
     return (
         <div className="stack-sm">
             <p className="small m0">Esta noche podéis invitar en secreto a uno de los {view.factions.loyal} a cambiar de bando. Solo hay una oportunidad.</p>
-            <PlayerGrid players={targets} factions={view.factions} onPick={p => setPick(p.id)} selected={[pick].filter(Boolean)} />
-            {chosen && <button className="btn primary block" onClick={() => act('invite', { targetId: pick })}>Invitar a {chosen.name}</button>}
+            <PlayerGrid players={targets} factions={view.factions} onPick={p => setPick(p.id)} selected={[pick].filter(Boolean)} kill />
+            {chosen && <HoldButton className="block" onConfirm={() => act('invite', { targetId: pick })}>Invitar a {chosen.name}</HoldButton>}
         </div>
     );
 }
@@ -434,21 +490,21 @@ function InvitationModal({ view, act }) {
     const [confirm, setConfirm] = useState(null);
     return (
         <Modal>
-            <div className="card hot stack">
+            <div className="card felon stack">
                 <h2>Invitación secreta</h2>
                 <p className="m0">Los {view.factions.traitor} te invitan a unirte a ellos. Si aceptas, cambias de bando y entras en su cónclave.</p>
                 <p className="small muted m0">Nadie sabrá lo que decidas. No hay vuelta atrás.</p>
                 {confirm === null ? (
                     <div className="row nowrap">
                         <button className="btn grow" onClick={() => setConfirm(false)}>Rechazar</button>
-                        <button className="btn danger grow" onClick={() => setConfirm(true)}>Aceptar</button>
+                        <button className="btn primary grow" onClick={() => setConfirm(true)}>Aceptar</button>
                     </div>
                 ) : (
                     <div className="row nowrap">
-                        <button className="btn ghost grow" onClick={() => setConfirm(null)}>Volver</button>
-                        <button className={`btn ${confirm ? 'danger' : 'primary'} grow`} onClick={() => act('respond-invitation', { accept: confirm })}>
-                            {confirm ? `Unirme a los ${view.factions.traitor}` : `Seguir con los ${view.factions.loyal}`}
-                        </button>
+                        <button className="btn grow" onClick={() => setConfirm(null)}>Volver</button>
+                        {confirm
+                            ? <HoldButton wrapClass="grow" className="block" onConfirm={() => act('respond-invitation', { accept: true })}>Unirme a los {view.factions.traitor}</HoldButton>
+                            : <ActionButton wrapClass="grow" className="primary block" onClick={() => act('respond-invitation', { accept: false })}>Seguir con los {view.factions.loyal}</ActionButton>}
                     </div>
                 )}
             </div>
@@ -456,22 +512,29 @@ function InvitationModal({ view, act }) {
     );
 }
 
-// ---------- Rol ----------
+// ---------- Rol: todo lo secreto vive aquí ----------
 
-function RoleModal({ me, view, onClose }) {
+function SecretSheet({ me, view, chat, act, self, onClose }) {
     const [flipped, setFlipped] = useState(false);
     const isTraitor = me.role === 'traitor';
     const allies = (me.allies || []).filter(a => a.id !== me.playerId);
+    const playing = view.phase !== 'end' && self.alive;
     return (
-        <Modal>
-            <div className="stack">
-                <p className="small muted center m0">Que nadie vea tu pantalla</p>
+        <div className="secret-sheet" role="dialog" aria-modal="true" aria-label="Mi rol">
+            <div className="topbar">
+                <div className="topbar-inner">
+                    <span className="brand">Mi rol</span>
+                    <span className="grow" />
+                    <button className="btn primary sm" onClick={onClose}><EyeSlash size={18} /> Ocultar</button>
+                </div>
+            </div>
+            <div className="page narrow stack">
                 <button className={`role-card ${flipped ? 'flipped' : ''}`} onClick={() => setFlipped(f => !f)} aria-label="Dar la vuelta a la carta">
                     <div className="role-card-inner">
                         <div className="role-face front">
                             <span className="brand">{view.name}</span>
                             <img className="logo" src={`${process.env.PUBLIC_URL}/img/logo.webp`} alt="" style={{ width: '62%', alignSelf: 'center' }} />
-                            <span className="small muted">Toca para darle la vuelta</span>
+                            <span className="small">Comprueba que nadie mira tu pantalla.<br /><span className="muted">Toca la carta para ver tu bando.</span></span>
                         </div>
                         <div className={`role-face back ${me.role} has-art`}>
                             <Art name={isTraitor ? 'punal.jpg' : 'farol.jpg'} />
@@ -480,16 +543,29 @@ function RoleModal({ me, view, onClose }) {
                             <span className="small">Eres de los</span>
                             <span className="display">{isTraitor ? view.factions.traitor : view.factions.loyal}</span>
                             <span className="small">
-                                {isTraitor
-                                    ? `Elimina a los ${view.factions.loyal} sin que te descubran.${allies.length ? ` Tus aliados: ${allies.map(a => a.name).join(', ')}.` : ''}`
-                                    : `Descubre y destierra a todos los ${view.factions.traitor}.`}
+                                {isTraitor ? `Elimina a los ${view.factions.loyal} sin que te descubran.` : `Descubre y destierra a todos los ${view.factions.traitor}.`}
                             </span>
                         </div>
                     </div>
                 </button>
-                <button className="btn primary block" onClick={onClose}>Ocultar</button>
+
+                {flipped && isTraitor && allies.length > 0 && (
+                    <section className="card felon stack-sm">
+                        <h3 className="m0">Tus aliados</h3>
+                        <div className="allies">
+                            {allies.map(a => {
+                                const p = view.players.find(x => x.id === a.id) || { ...a, photo: null };
+                                return <span key={a.id} className="ally"><Avatar player={p} size={36} />{a.name}{!a.alive && <span className="tiny muted">(eliminado)</span>}</span>;
+                            })}
+                        </div>
+                    </section>
+                )}
+                {flipped && isTraitor && playing && view.phase === 'night' && <ConclavePanel view={view} me={me} act={act} />}
+                {flipped && isTraitor && playing && (
+                    <Chat me={me} view={view} chat={chat} act={act} channels={['traitors']} initial="traitors" />
+                )}
             </div>
-        </Modal>
+        </div>
     );
 }
 
@@ -501,7 +577,7 @@ function GhostWelcome({ onClose }) {
             <div className="card stack">
                 <Seal kind="ghost" size={120} className="center-seal" />
                 <h2 className="center">La Sociedad Secreta de los Fantasmas</h2>
-                <p className="m0">Has sido eliminado, pero tu partida sigue. Ahora formas parte de una sociedad secreta que los vivos no conocen.</p>
+                <p className="m0">Te han eliminado, pero tu partida sigue. Ahora formas parte de una sociedad secreta que los vivos no conocen.</p>
                 <p className="m0">Cada día recibiréis el nombre de un jugador. Conseguid, sin que se note, que los vivos le voten en la mesa redonda. Cada voto suma calaveras, y si lo destierran sumáis más. Con suficientes calaveras robáis parte del botín final.</p>
                 <p className="m0"><strong>Ni una palabra a los vivos.</strong> Coordinaos en vuestro chat.</p>
                 <button className="btn primary block" onClick={onClose}>Entendido</button>
@@ -582,11 +658,12 @@ function SpotlightCard({ view }) {
 }
 
 function Events({ events }) {
+    if (events.length === 0) return <p className="small muted">Todavía no ha pasado nada.</p>;
     return (
         <section className="card">
             <h3>Lo que ha pasado</h3>
             <ul className="event-list">
-                {[...events].reverse().slice(0, 8).map(e => (
+                {[...events].reverse().slice(0, 20).map(e => (
                     <li key={e.id}><span className="day">Día {e.day}</span>{e.text}</li>
                 ))}
             </ul>
@@ -609,7 +686,7 @@ function DeviceLink({ code }) {
     const [open, setOpen] = useState(false);
     const link = `${window.location.origin}/p/${code}?t=${encodeURIComponent(storage.get(playerTokenKey(code)) || '')}`;
     if (!open) {
-        return <button className="btn ghost block" onClick={() => setOpen(true)}><DeviceMobile size={20} /> Jugar también desde otro dispositivo</button>;
+        return <button className="btn link" style={{ alignSelf: 'flex-start' }} onClick={() => setOpen(true)}><DeviceMobile size={18} /> Jugar también desde otro dispositivo</button>;
     }
     return (
         <section className="stack-sm">
@@ -627,23 +704,21 @@ const CHANNELS = {
     dead: { label: 'Fantasmas', icon: <Ghost size={16} /> }
 };
 
-function Chat({ me, self, view, chat, act }) {
-    const isTraitor = me.role === 'traitor' && self.alive;
-    const isDead = !self.alive && view.phase !== 'lobby';
-    const available = ['general', ...(isTraitor ? ['traitors'] : []), ...(isDead ? ['dead'] : [])];
-    const [channel, setChannel] = useState(isDead ? 'dead' : 'general');
+function Chat({ me, view, chat, act, channels, initial, onSeen }) {
+    const [channel, setChannel] = useState(initial || channels[0]);
     const [text, setText] = useState('');
     const [seen, setSeen] = useState({});
     const log = useRef(null);
-    const active = available.includes(channel) ? channel : 'general';
+    const active = channels.includes(channel) ? channel : channels[0];
     const messages = chat[active] || [];
-    const canWrite = active === 'general' ? (self.alive || view.phase === 'end') : true;
+    const self = view.players.find(p => p.id === me.playerId);
+    const canWrite = active === 'general' ? (self?.alive || view.phase === 'end') : true;
 
-    useEffect(() => { if (isDead) setChannel('dead'); }, [isDead]);
     useEffect(() => {
         setSeen(s => ({ ...s, [active]: messages.length }));
+        if (onSeen) onSeen(active, messages.length);
         if (log.current) log.current.scrollTop = log.current.scrollHeight;
-    }, [messages.length, active]);
+    }, [messages.length, active]); // eslint-disable-line react-hooks/exhaustive-deps
 
     const submit = async e => {
         e.preventDefault();
@@ -652,19 +727,19 @@ function Chat({ me, self, view, chat, act }) {
     };
 
     return (
-        <section className="card">
-            {available.length > 1 ? (
+        <section className={`card ${active === 'traitors' ? 'felon' : ''}`}>
+            {channels.length > 1 ? (
                 <div className="tabs" role="tablist">
-                    {available.map(ch => {
-                        const unread = ch !== active ? (chat[ch] || []).length - (seen[ch] || 0) : 0;
+                    {channels.map(ch => {
+                        const unread = ch !== active ? (chat[ch] || []).length - (seen[ch] ?? (chat[ch] || []).length) : 0;
                         return (
-                            <button key={ch} role="tab" aria-selected={active === ch} className={`tab ${ch} ${active === ch ? 'on' : ''}`} onClick={() => setChannel(ch)}>
+                            <button key={ch} role="tab" aria-selected={active === ch} className={`tab ${active === ch ? 'on' : ''}`} onClick={() => setChannel(ch)}>
                                 {CHANNELS[ch].icon}{CHANNELS[ch].label}{unread > 0 && <span className="unread">{unread}</span>}
                             </button>
                         );
                     })}
                 </div>
-            ) : <h3 className="m0">Chat</h3>}
+            ) : <h3 className="m0 row nowrap" style={{ gap: 8 }}>{CHANNELS[active].icon}{active === 'traitors' ? `Chat de los ${view.factions.traitor}` : 'Chat'}</h3>}
             <div className="chat-log" ref={log}>
                 {messages.length === 0 && <p className="small faint m0">Nadie ha escrito todavía.</p>}
                 {messages.map(m => {
@@ -681,7 +756,7 @@ function Chat({ me, self, view, chat, act }) {
             <form className="row nowrap" onSubmit={submit}>
                 <input className="input" value={text} maxLength={500} onChange={e => setText(e.target.value)} disabled={!canWrite}
                     placeholder={canWrite ? 'Escribe un mensaje' : 'Los eliminados no hablan aquí'} aria-label="Mensaje" />
-                <button className={`btn ${active === 'traitors' ? 'danger' : 'primary'}`} disabled={!canWrite || !text.trim()}>Enviar</button>
+                <button className="btn send" disabled={!canWrite || !text.trim()} aria-label="Enviar"><PaperPlaneRight size={22} weight="fill" /></button>
             </form>
         </section>
     );
@@ -704,13 +779,13 @@ function EndScreen({ view, me, chat, self, act }) {
                 <p className="phase-text m0">{iWon ? 'Has ganado.' : 'Has perdido.'} {view.name} ha terminado.</p>
             </header>
 
-            {ghosts && ghosts.skulls > 0 && (
+            {ghosts && (
                 <section className="card hot stack">
                     <h3 className="m0 row nowrap" style={{ gap: 8 }}><Ghost size={20} /> La Sociedad Secreta de los Fantasmas</h3>
-                    <p className="m0">Mientras los vivos buscaban a los {view.factions.traitor}, los eliminados conspiraban para que cada día un objetivo secreto recibiera votos.</p>
+                    <p className="m0">Mientras los vivos buscaban a los {view.factions.traitor}, los eliminados conspiraban en secreto: cada día tenían un objetivo y ganaban calaveras con cada voto que recibía en la mesa redonda.</p>
                     <div className="row between" style={{ alignItems: 'flex-end' }}>
-                        <span className="big-number">{ghosts.skulls}</span>
-                        <span className="small muted">{ghosts.percent > 0 ? `Roban el ${ghosts.percent}% del botín: ${formatEuros(stolen, view.goldPerEuro)}` : 'No llegan a ningún umbral. El botín queda intacto.'}</span>
+                        <span><span className="big-number">{ghosts.skulls}</span> <span className="label">calaveras</span></span>
+                        <span className="small muted">{ghosts.percent > 0 ? `Roban el ${ghosts.percent}% del botín: ${formatEuros(stolen, view.goldPerEuro)}` : ghosts.history.length === 0 ? 'No llegó a haber ningún objetivo. El botín queda intacto.' : 'No llegan a ningún umbral. El botín queda intacto.'}</span>
                     </div>
                     <Thresholds skulls={ghosts.skulls} thresholds={ghosts.thresholds} />
                     {ghosts.history.length > 0 && <GhostHistory history={ghosts.history} />}
@@ -732,7 +807,7 @@ function EndScreen({ view, me, chat, self, act }) {
                     <h3>Quién era quién</h3>
                     <PlayerGrid players={sorted} factions={view.factions} meId={me.playerId} revealAll />
                 </section>
-                <Chat me={me} self={self} view={view} chat={chat} act={act} />
+                <Chat me={me} view={view} chat={chat} act={act} channels={['general', ...(me.role === 'traitor' ? ['traitors'] : []), ...(!self.alive ? ['dead'] : [])]} />
             </div>
         </div>
     );

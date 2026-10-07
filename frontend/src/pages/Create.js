@@ -70,7 +70,7 @@ export default function Create() {
 
     return (
         <form className="page narrow stack" onSubmit={submit}>
-            <Link to="/" className="btn ghost sm" style={{ alignSelf: 'flex-start' }}><ArrowLeft size={18} /> Volver</Link>
+            <Link to="/" className="btn sm" style={{ alignSelf: 'flex-start' }}><ArrowLeft size={18} /> Volver</Link>
             <h1 style={{ fontSize: 'clamp(3rem, 14vw, 5rem)' }}>Nueva partida</h1>
 
             <section className="card stack">
@@ -200,6 +200,13 @@ export default function Create() {
                             <span className="small">Extra si el objetivo es desterrado</span>
                             <Stepper value={config.ghosts.perElimination} max={20} onChange={v => setGhosts('perElimination', v)} />
                         </div>
+                        <label className="check small">
+                            <input type="checkbox" checked={config.ghosts.auto !== false} onChange={e => setGhosts('auto', e.target.checked)} />
+                            Umbrales automáticos según los días y el número de jugadores (recomendado)
+                        </label>
+                        {config.ghosts.auto !== false ? (
+                            <p className="small muted m0">Se calculan al empezar: con la plantilla de la despedida y 12 jugadores salen 8, 12 y 16 calaveras para robar el 50, 75 y 100 % del botín.</p>
+                        ) : (
                         <table className="table">
                             <thead><tr><th>Calaveras</th><th className="r">Roban del botín</th></tr></thead>
                             <tbody>
@@ -211,6 +218,7 @@ export default function Create() {
                                 ))}
                             </tbody>
                         </table>
+                        )}
                     </>
                 )}
             </section>
@@ -228,7 +236,7 @@ export default function Create() {
                         <button type="button" className="btn sm icon" aria-label="Quitar" onClick={() => setTests(ts => ts.filter((_, j) => j !== i))}><X size={16} /></button>
                     </div>
                 ))}
-                <button type="button" className="btn ghost block" onClick={() => setTests(ts => [...ts, { name: '', max: 0 }])}><Plus size={18} /> Añadir prueba</button>
+                <button type="button" className="btn block" onClick={() => setTests(ts => [...ts, { name: '', max: 0 }])}><Plus size={18} /> Añadir prueba</button>
                 <p className="muted tiny" style={{ margin: 0 }}>Puedes añadir o cambiar pruebas en cualquier momento desde el panel.</p>
             </section>
 
@@ -241,7 +249,7 @@ export default function Create() {
             </section>
 
             {error && <p className="blood">{error}</p>}
-            <button className="btn primary block lg" disabled={busy}>Crear partida</button>
+            <button className="btn primary block lg" disabled={busy}>{busy ? <><span className="spinner-sm" />Creando…</> : 'Crear partida'}</button>
         </form>
     );
 }

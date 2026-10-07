@@ -34,6 +34,70 @@ export function RoleTag({ role, factions }) {
     );
 }
 
+// Botón con acción asíncrona: se bloquea mientras espera, muestra «Enviando…» y,
+// si el servidor no responde o falla, ofrece «Reintentar». Si está desactivado,
+// `hint` explica debajo qué falta.
+export function ActionButton({ onClick, children, className = 'primary', hint, disabled, busyLabel = 'Enviando…', wrapClass = '', ...rest }) {
+    const [state, setState] = useState('idle'); // idle | busy | retry
+    const mounted = useRef(true);
+    useEffect(() => () => { mounted.current = false; }, []);
+    const run = async e => {
+        if (state === 'busy') return;
+        setState('busy');
+        let ok = false;
+        try { ok = (await onClick(e)) !== false; } catch (_) { ok = false; }
+        if (mounted.current) setState(ok ? 'idle' : 'retry');
+    };
+    const busy = state === 'busy';
+    return (
+        <span className={`btn-wrap ${wrapClass}`}>
+            <button type="button" {...rest} className={`btn ${className} ${busy ? 'busy' : ''}`} disabled={disabled || busy} onClick={run} aria-busy={busy}>
+                {busy ? <><span className="spinner-sm" aria-hidden="true" />{busyLabel}</> : state === 'retry' ? 'Reintentar' : children}
+            </button>
+            {disabled && !busy && hint && <span className="btn-hint">{hint}</span>}
+        </span>
+    );
+}
+
+// Acción irreversible: hay que mantener pulsado (800 ms) en lugar de un «¿Seguro?»
+export function HoldButton({ onConfirm, children, className = '', hint = 'Mantén pulsado para confirmar', disabled, duration = 800, wrapClass = '', title }) {
+    const [holding, setHolding] = useState(false);
+    const [busy, setBusy] = useState(false);
+    const timer = useRef(null);
+    const mounted = useRef(true);
+    useEffect(() => () => { mounted.current = false; clearTimeout(timer.current); }, []);
+    const start = e => {
+        if (disabled || busy || holding) return;
+        if (e.type === 'keydown' && e.key !== 'Enter' && e.key !== ' ') return;
+        if (e.type === 'keydown') e.preventDefault();
+        setHolding(true);
+        timer.current = setTimeout(async () => {
+            setHolding(false);
+            setBusy(true);
+            try { await onConfirm(); } finally { if (mounted.current) setBusy(false); }
+        }, duration);
+    };
+    const cancel = () => { clearTimeout(timer.current); setHolding(false); };
+    return (
+        <span className={`btn-wrap ${wrapClass}`}>
+            <button
+                type="button"
+                title={title}
+                className={`btn danger hold ${className} ${holding ? 'holding' : ''} ${busy ? 'busy' : ''}`}
+                disabled={disabled || busy}
+                onPointerDown={start} onPointerUp={cancel} onPointerLeave={cancel} onPointerCancel={cancel}
+                onKeyDown={start} onKeyUp={cancel} onBlur={cancel}
+                onContextMenu={e => e.preventDefault()}
+                aria-busy={busy}
+            >
+                <span className="hold-fill" aria-hidden="true" />
+                {busy ? <><span className="spinner-sm" aria-hidden="true" /><span>Enviando…</span></> : children}
+            </button>
+            {hint && !disabled && <span className="btn-hint">{hint}</span>}
+        </span>
+    );
+}
+
 export function useToasts(timeout = 6000) {
     const [toasts, setToasts] = useState([]);
     const push = useCallback((text, kind = 'info') => {
@@ -172,7 +236,7 @@ export function Thresholds({ skulls, thresholds }) {
             {thresholds.map(t => (
                 <div key={t.skulls} className={skulls >= t.skulls ? 'reached' : ''}>
                     <div className="display">{t.percent}%</div>
-                    <div className="tiny muted">con {t.skulls} calaveras</div>
+                    <div className="tiny muted">con <span className="num">{t.skulls}</span> calaveras</div>
                 </div>
             ))}
         </div>
@@ -193,7 +257,7 @@ export function TestsTable({ tests }) {
                     <tr key={t.id}>
                         <td>
                             {t.name}
-                            {t.status === 'active' && <span className="tag accent" style={{ marginLeft: 8 }}>En juego</span>}
+                            {t.status === 'active' && <span className="tag gold" style={{ marginLeft: 8 }}>En juego</span>}
                         </td>
                         <td className="r">{t.score === null ? <span className="faint">Pendiente</span> : fmt(t.score)}</td>
                         <td className="r muted">{t.max ? fmt(t.max) : ''}</td>

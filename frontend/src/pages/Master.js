@@ -1,11 +1,11 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import {
-    ArrowRight, ChatCircle, Coins, Gavel, Ghost, Knife, Megaphone, PaperPlaneRight, ShareNetwork, Television, Trash, Users
+    ArrowRight, ChatCircle, Coins, Eye, EyeSlash, Gavel, Ghost, Knife, LinkSimple, Megaphone, PaperPlaneRight, ShareNetwork, Television, Trash, Users
 } from '@phosphor-icons/react';
 import { formatEuros, formatGold, http, mcTokenKey, send, socket, storage } from '../api';
 import {
-    Avatar, CopyBox, Loading, OfflineBanner, RoleTag, Seal, Segmented, Thresholds, Toasts,
+    ActionButton, Avatar, CopyBox, HoldButton, Loading, OfflineBanner, RoleTag, Seal, Segmented, Thresholds, Toasts,
     useConnection, useSocketEvent, useToasts
 } from '../components';
 
@@ -28,6 +28,10 @@ export default function Master() {
     const [auth, setAuth] = useState('checking'); // checking | login | ok
     const [chat, setChat] = useState(EMPTY_CHAT);
     const [tab, setTab] = useState('game');
+    // Los roles van ocultos por defecto: el MC puede tener el móvil a la vista de todos
+    const rolesKey = `mc-roles:${code}`;
+    const [showRoles, setShowRoles] = useState(() => storage.get(rolesKey) === '1');
+    const toggleRoles = () => setShowRoles(v => { storage.set(rolesKey, v ? '0' : '1'); return !v; });
 
     useEffect(() => {
         adoptTokenFromUrl(code);
@@ -80,9 +84,12 @@ export default function Master() {
             <>
                 <div className="topbar">
                     <div className="topbar-inner">
-                        <span className="brand">{code}</span>
-                        <span className="tag solid">MC</span>
+                        <span className="room-code">{code}</span>
+                        <span className="tag gold">MC</span>
                         <span className="small muted grow" style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{state.name}</span>
+                        <button className="btn sm" onClick={toggleRoles} aria-pressed={showRoles}>
+                            {showRoles ? <><EyeSlash size={18} /> Ocultar roles</> : <><Eye size={18} /> Ver roles</>}
+                        </button>
                     </div>
                     <nav className="mc-nav" style={{ maxWidth: 1120, margin: '0 auto', padding: '0 8px' }}>
                         {TABS.map(t => (
@@ -91,8 +98,8 @@ export default function Master() {
                     </nav>
                 </div>
                 <div className="page stack">
-                    {tab === 'game' && <GameTab s={state} act={act} />}
-                    {tab === 'players' && <PlayersTab s={state} act={act} />}
+                    {tab === 'game' && <GameTab s={state} act={act} showRoles={showRoles} />}
+                    {tab === 'players' && <PlayersTab s={state} act={act} showRoles={showRoles} code={code} />}
                     {tab === 'tests' && <TestsTab s={state} act={act} />}
                     {tab === 'ghosts' && <GhostsTab s={state} />}
                     {tab === 'chat' && <ChatTab s={state} chat={chat} act={act} />}
@@ -125,7 +132,7 @@ function Login({ code, onToken }) {
     };
     return (
         <form className="page narrow stack" style={{ paddingTop: 48 }} onSubmit={submit}>
-            <span className="tag">Partida {code}</span>
+            <span className="tag">Partida <span className="room-code" style={{ fontSize: 'inherit' }}>{code}</span></span>
             <h1>Panel del MC</h1>
             <p className="muted m0">Abre el enlace de MC que recibiste o entra con la contraseña de la partida.</p>
             <label className="field">
@@ -155,15 +162,15 @@ function nextActionLabel(s) {
 
 const PHASE_TITLE = { lobby: 'Sala de espera', day: 'Día', roundtable: 'Mesa redonda', night: 'Noche', end: 'Final' };
 
-function GameTab({ s, act }) {
+function GameTab({ s, act, showRoles }) {
     const label = nextActionLabel(s);
     const alive = s.players.filter(p => p.alive).length;
-    const advance = () => {
-        if (s.phase === 'roundtable' && s.round && !window.confirm('Hay una votación abierta. ¿Cerrar la mesa redonda sin más destierros?')) return;
-        if (s.phase === 'night' && s.today.conclave > 0 && Object.keys(s.nightTally).length === 0 && !s.nightOverride &&
-            !window.confirm('Los traidores no han elegido víctima. ¿Amanecer sin asesinato?')) return;
-        act('mc:advance');
-    };
+    // Avanzar es lo normal (dorado); si se pierde algo (una votación abierta, una noche sin víctima), se mantiene pulsado
+    const risk = s.phase === 'roundtable' && s.round
+        ? 'Hay una votación abierta: se descarta. Mantén pulsado para confirmar'
+        : s.phase === 'night' && s.today.conclave > 0 && Object.keys(s.nightTally).length === 0 && !s.nightOverride
+            ? `Los ${s.config.factions.traitor} no han elegido víctima: amanecerá sin asesinato. Mantén pulsado`
+            : null;
     return (
         <>
             <header className={`phase ${s.phase}`}>
@@ -173,24 +180,32 @@ function GameTab({ s, act }) {
 
             <div className="stat-grid">
                 <div className="stat"><div className="label">Vivos</div><div className="value">{alive}</div></div>
-                <div className="stat"><div className="label row nowrap" style={{ gap: 6 }}><Seal kind="traitor" size={20} />{s.config.factions.traitor}</div><div className="value accent">{s.aliveCounts.traitor}</div></div>
-                <div className="stat"><div className="label row nowrap" style={{ gap: 6 }}><Seal kind="loyal" size={20} />{s.config.factions.loyal}</div><div className="value">{s.aliveCounts.loyal}</div></div>
+                {showRoles ? (
+                    <>
+                        <div className="stat"><div className="label row nowrap" style={{ gap: 6 }}><Seal kind="traitor" size={20} />{s.config.factions.traitor}</div><div className="value accent">{s.aliveCounts.traitor}</div></div>
+                        <div className="stat"><div className="label row nowrap" style={{ gap: 6 }}><Seal kind="loyal" size={20} />{s.config.factions.loyal}</div><div className="value">{s.aliveCounts.loyal}</div></div>
+                    </>
+                ) : (
+                    <div className="stat"><div className="label">Eliminados</div><div className="value">{s.players.length - alive}</div></div>
+                )}
                 <div className="stat"><div className="label">Botín</div><div className="value">{formatEuros(s.treasure, s.goldPerEuro)}</div></div>
             </div>
 
             {s.phase === 'lobby' && <LobbyInfo s={s} />}
-            {s.phase === 'roundtable' && <RoundtableControl s={s} act={act} />}
-            {s.phase === 'night' && <NightControl s={s} act={act} />}
+            {s.phase === 'roundtable' && <RoundtableControl s={s} act={act} showRoles={showRoles} />}
+            {s.phase === 'night' && <NightControl s={s} act={act} showRoles={showRoles} />}
             {s.phase === 'end' && (
                 <p className="note accent">Ganan los {s.winner === 'traitor' ? s.config.factions.traitor : s.config.factions.loyal}. Puedes empezar otra partida con los mismos jugadores desde Compartir.</p>
             )}
 
-            {label && (
-                <button className="btn primary block lg" onClick={advance} disabled={s.phase === 'lobby' && s.players.length < 4}>
-                    {label} <ArrowRight size={20} />
-                </button>
-            )}
-            {s.phase === 'lobby' && s.players.length < 4 && <p className="small muted m0">Hacen falta al menos 4 jugadores.</p>}
+            {label && (risk
+                ? <HoldButton className="block lg" hint={risk} onConfirm={() => act('mc:advance')}>{label} <ArrowRight size={20} /></HoldButton>
+                : (
+                    <ActionButton className="primary block lg" onClick={() => act('mc:advance')} disabled={s.phase === 'lobby' && s.players.length < 4}
+                        hint={`Hacen falta al menos 4 jugadores (hay ${s.players.length})`}>
+                        {label} <ArrowRight size={20} />
+                    </ActionButton>
+                ))}
 
             {s.events.length > 0 && (
                 <section className="section">
@@ -218,21 +233,21 @@ function LobbyInfo({ s }) {
     );
 }
 
-function RoundtableControl({ s, act }) {
+function RoundtableControl({ s, act, showRoles }) {
     const [pick, setPick] = useState(null);
     const [targetVotes, setTargetVotes] = useState('');
     const alivePlayers = s.players.filter(p => p.alive);
-    const ghostTarget = s.ghosts.target;
+    const ghostTarget = s.ghosts.target && alivePlayers.find(p => p.name === s.ghosts.target.name) ? s.ghosts.target : null;
+    const needsTargetVotes = s.config.voting === 'inperson' && ghostTarget && targetVotes === '';
     const candidates = s.round && s.round.candidates;
 
     if (!s.round) {
         return <p className="note">Mesa redonda terminada ({s.roundsDone} de {s.today.roundtable}).</p>;
     }
 
+    const picked = pick && s.players.find(p => p.id === pick);
     const banish = async () => {
-        const target = s.players.find(p => p.id === pick);
-        if (!window.confirm(`¿Desterrar a ${target.name}?`)) return;
-        if (await act('mc:banish', { playerId: pick, targetVotes }, `${target.name} desterrado`)) {
+        if (await act('mc:banish', { playerId: pick, targetVotes }, `Desterrado: ${picked.name}`)) {
             setPick(null);
             setTargetVotes('');
         }
@@ -255,7 +270,7 @@ function RoundtableControl({ s, act }) {
                         ))}
                         {Object.keys(s.roundTally).length === 0 && <li className="muted">Nadie ha votado todavía.</li>}
                     </ul>
-                    <button className="btn danger block" onClick={() => act('mc:close-round')} disabled={s.round.voters.length === 0}>Cerrar la votación ya</button>
+                    <HoldButton className="block" onConfirm={() => act('mc:close-round')} disabled={s.round.voters.length === 0}>Cerrar la votación ya</HoldButton>
                     <p className="small muted m0">Se cierra sola cuando votan todos. Si hace falta, también puedes desterrar a alguien directamente:</p>
                 </>
             )}
@@ -265,30 +280,35 @@ function RoundtableControl({ s, act }) {
                     <button key={p.id} type="button" className={`player-tile ${pick === p.id ? 'selected' : ''}`} onClick={() => setPick(p.id)}>
                         <Avatar player={p} size={56} />
                         <span className="name">{p.name}</span>
-                        <RoleTag role={s.roles[p.id]} factions={s.config.factions} />
+                        {showRoles && <RoleTag role={s.roles[p.id]} factions={s.config.factions} />}
                     </button>
                 ))}
             </div>
 
             {s.config.voting === 'inperson' && ghostTarget && (
                 <label className="field">
-                    <span>Votos que ha recibido {ghostTarget.name} (objetivo de los Fantasmas)</span>
-                    <input className="input" type="number" min={0} value={targetVotes} onChange={e => setTargetVotes(e.target.value)} />
+                    <span>Votos que ha recibido {ghostTarget.name} {showRoles ? '(objetivo secreto de los Fantasmas; ' : '('}obligatorio, pon 0 si nadie)</span>
+                    <input className="input" type="number" inputMode="numeric" min={0} value={targetVotes} onChange={e => setTargetVotes(e.target.value)} />
                 </label>
             )}
-            <div className="row nowrap">
-                <button className="btn ghost grow" onClick={() => act('mc:skip-round')}>No sale nadie</button>
-                <button className="btn danger grow" disabled={!pick} onClick={banish}><Gavel size={18} /> Desterrar</button>
+            <div className="row nowrap" style={{ alignItems: 'flex-start' }}>
+                <ActionButton wrapClass="grow" className="block" onClick={() => act('mc:skip-round')}>No sale nadie</ActionButton>
+                <HoldButton wrapClass="grow" className="block" disabled={!pick || needsTargetVotes} onConfirm={banish}
+                    hint={picked ? `Mantén para desterrar a ${picked.name}` : null}>
+                    <Gavel size={18} /> <span>Desterrar</span>
+                </HoldButton>
             </div>
+            {(!pick || needsTargetVotes) && <p className="btn-hint m0">{!pick ? 'Toca a quien sale desterrado' : `Indica los votos que recibió ${ghostTarget.name}`}</p>}
         </section>
     );
 }
 
-function NightControl({ s, act }) {
+function NightControl({ s, act, showRoles }) {
     const kills = s.today.conclave;
     const names = ids => ids.map(id => s.players.find(p => p.id === id)?.name).join(', ');
     const [override, setOverride] = useState(null);
-    const loyals = s.players.filter(p => p.alive && s.roles[p.id] !== 'traitor');
+    const candidates = s.players.filter(p => p.alive && (!showRoles || s.roles[p.id] !== 'traitor'));
+    const tallyList = (tally) => Object.entries(tally).sort((a, b) => b[1] - a[1]);
     const toggle = id => setOverride(prev => {
         const cur = prev || [];
         return cur.includes(id) ? cur.filter(x => x !== id) : [...cur, id].slice(-kills);
@@ -312,40 +332,66 @@ function NightControl({ s, act }) {
                 <>
                     <p className="small m0">Esta noche {kills === 1 ? 'muere 1 jugador' : `mueren ${kills} jugadores`}.</p>
                     <ul className="event-list">
-                        {Object.entries(s.nightVotes).map(([id, ids]) => (
-                            <li key={id}><strong>{s.players.find(p => p.id === id)?.name}</strong> elige a {names(ids) || 'nadie'}</li>
-                        ))}
-                        {Object.keys(s.nightVotes).length === 0 && <li className="muted">Los traidores aún no han votado.</li>}
+                        {showRoles
+                            ? Object.entries(s.nightVotes).map(([id, ids]) => (
+                                <li key={id}><strong>{s.players.find(p => p.id === id)?.name}</strong> elige a {names(ids) || 'nadie'}</li>
+                            ))
+                            : tallyList(s.nightTally).map(([id, n]) => (
+                                <li key={id} className="row between nowrap"><span>{s.players.find(p => p.id === id)?.name}</span><strong className="num">{n}</strong></li>
+                            ))}
+                        {Object.keys(s.nightVotes).length === 0 && <li className="muted">El cónclave aún no ha elegido.</li>}
                     </ul>
                     {s.nightOverride
-                        ? <p className="note accent m0">Has decidido tú: {names(s.nightOverride)}. <button className="btn sm ghost" onClick={() => act('mc:night-victims', { ids: null })}>Deshacer</button></p>
+                        ? <p className="note felon m0">Has decidido tú: {names(s.nightOverride)}. <button className="btn link" onClick={() => act('mc:night-victims', { ids: null })}>Deshacer</button></p>
                         : (
                             <details>
                                 <summary className="small muted" style={{ cursor: 'pointer' }}>Decidir yo las víctimas</summary>
                                 <div className="stack-sm" style={{ marginTop: 10 }}>
                                     <div className="player-grid">
-                                        {loyals.map(p => (
+                                        {candidates.map(p => (
                                             <button key={p.id} type="button" className={`player-tile ${(override || []).includes(p.id) ? 'selected' : ''}`} onClick={() => toggle(p.id)}>
                                                 <Avatar player={p} size={48} /><span className="name">{p.name}</span>
                                             </button>
                                         ))}
                                     </div>
-                                    <button className="btn danger block" disabled={!override || override.length === 0} onClick={() => act('mc:night-victims', { ids: override })}>Confirmar víctimas</button>
+                                    <HoldButton className="block" disabled={!override || override.length === 0} onConfirm={() => act('mc:night-victims', { ids: override })}>Elegir víctima</HoldButton>
                                 </div>
                             </details>
                         )}
                 </>
             )}
+            <div className="section stack-sm">
+                <h3 className="m0">Sospechas de la noche</h3>
+                <p className="small muted m0">Todos los vivos señalan a alguien para que ninguna pantalla se distinga. Llevan {s.suspicionCount} de {s.players.filter(p => p.alive).length}.</p>
+                {Object.keys(s.suspicionTally).length > 0 && (
+                    <ul className="event-list">
+                        {tallyList(s.suspicionTally).map(([id, n]) => (
+                            <li key={id} className="row between nowrap"><span>{s.players.find(p => p.id === id)?.name}</span><strong className="num">{n}</strong></li>
+                        ))}
+                    </ul>
+                )}
+            </div>
         </section>
     );
 }
 
 // ---------- Jugadores ----------
 
-function PlayersTab({ s, act }) {
+function PlayersTab({ s, act, showRoles, code }) {
     const [messageTo, setMessageTo] = useState(null);
+    const [links, setLinks] = useState({});
+    // Enlace de reentrada: para quien pierde el móvil o se queda sin batería
+    const getLink = async p => {
+        if (links[p.id]) return setLinks(l => { const { [p.id]: _, ...rest } = l; return rest; });
+        try {
+            const { token } = await send('mc:player-link', { playerId: p.id });
+            setLinks(l => ({ ...l, [p.id]: `${window.location.origin}/p/${code}?t=${encodeURIComponent(token)}` }));
+        } catch (err) {
+            setLinks(l => ({ ...l, [p.id]: null }));
+        }
+    };
     const [text, setText] = useState('');
-    const send = async e => {
+    const sendMessage = async e => {
         e.preventDefault();
         if (await act('mc:message', { text, toId: messageTo }, 'Mensaje enviado')) {
             setText('');
@@ -363,14 +409,25 @@ function PlayersTab({ s, act }) {
                             <div style={{ fontWeight: 600 }}>{p.name}</div>
                             <div className="tiny muted">{p.alive ? 'Vivo' : `${p.eliminatedBy === 'murder' ? 'Asesinado' : 'Desterrado'} el día ${p.eliminatedDay}`}</div>
                         </div>
-                        <RoleTag role={s.roles[p.id]} factions={s.config.factions} />
-                        <button className="btn sm icon" title="Mensaje privado" onClick={() => setMessageTo(messageTo === p.id ? null : p.id)}><PaperPlaneRight size={18} /></button>
+                        {showRoles && <RoleTag role={s.roles[p.id]} factions={s.config.factions} />}
+                        <button className="btn sm icon" title="Enlace para volver a entrar" aria-label="Enlace para volver a entrar" onClick={() => getLink(p)}><LinkSimple size={18} /></button>
+                        <button className="btn sm icon" title="Mensaje privado" aria-label="Mensaje privado" onClick={() => setMessageTo(messageTo === p.id ? null : p.id)}><PaperPlaneRight size={18} /></button>
                         {s.phase === 'lobby' && (
-                            <button className="btn sm icon" title="Quitar" onClick={() => window.confirm(`¿Quitar a ${p.name}?`) && act('mc:kick', { playerId: p.id })}><Trash size={18} /></button>
+                            <HoldButton className="sm icon" title={`Mantén para quitar a ${p.name}`} hint={null} onConfirm={() => act('mc:kick', { playerId: p.id })}><Trash size={18} /></HoldButton>
                         )}
                     </div>
+                    {p.id in links && (
+                        <div className="stack-sm" style={{ marginTop: 10 }}>
+                            {links[p.id] ? (
+                                <>
+                                    <p className="small muted m0">Enlace personal de {p.name}: entra como este jugador y ve su rol. Envíaselo solo a esa persona.</p>
+                                    <CopyBox value={links[p.id]} />
+                                </>
+                            ) : <p className="small accent m0">No se ha podido generar el enlace. Prueba otra vez.</p>}
+                        </div>
+                    )}
                     {messageTo === p.id && (
-                        <form className="row nowrap" style={{ marginTop: 10 }} onSubmit={send}>
+                        <form className="row nowrap" style={{ marginTop: 10 }} onSubmit={sendMessage}>
                             <input className="input" autoFocus value={text} maxLength={500} onChange={e => setText(e.target.value)} placeholder={`Mensaje privado para ${p.name}`} />
                             <button className="btn primary" disabled={!text.trim()}>Enviar</button>
                         </form>
@@ -406,6 +463,7 @@ function TestsTab({ s, act }) {
                 </div>
                 <textarea className="input" placeholder="Instrucciones para los jugadores (se ven en la tele)" value={description} onChange={e => setDescription(e.target.value)} />
                 <button className="btn block" disabled={!name.trim()}>Añadir prueba</button>
+                {!name.trim() && <p className="btn-hint m0">Escribe el nombre de la prueba</p>}
             </form>
         </>
     );
@@ -434,12 +492,12 @@ function TestRow({ t, act, onTv }) {
             </div>
             <label className="field"><span>Instrucciones</span><textarea className="input" value={description} onChange={e => setDescription(e.target.value)} /></label>
             <div className="row nowrap">
-                {t.score === null && <button className="btn sm icon" title="Borrar prueba" onClick={() => window.confirm(`¿Borrar ${t.name}?`) && act('mc:test-remove', { id: t.id })}><Trash size={18} /></button>}
-                <button className={`btn sm ${onTv ? 'danger' : ''}`} onClick={() => act('mc:spotlight', { id: onTv ? null : t.id })}>
+                {t.score === null && <HoldButton className="sm icon" title={`Mantén para borrar ${t.name}`} hint={null} onConfirm={() => act('mc:test-remove', { id: t.id })}><Trash size={18} /></HoldButton>}
+                <ActionButton className={`sm ${onTv || dirty ? '' : 'primary'}`} onClick={() => act('mc:spotlight', { id: onTv ? null : t.id })}>
                     <Television size={18} /> {onTv ? 'Quitar de la tele' : 'Lanzar a la tele'}
-                </button>
+                </ActionButton>
                 <span className="grow" />
-                <button className="btn sm primary" disabled={!dirty} onClick={save}>Guardar</button>
+                {dirty && <ActionButton className="sm primary" onClick={save}>Guardar</ActionButton>}
             </div>
         </section>
     );
@@ -451,12 +509,12 @@ function GhostsTab({ s }) {
     const g = s.ghosts;
     return (
         <>
-            <p className="note">Solo tú y los eliminados veis esto. El objetivo se elige al azar entre los {s.config.factions.loyal.toLowerCase()} vivos en cada amanecer.</p>
+            <p className="note">Solo tú y los eliminados veis esto. En cada amanecer se elige al azar un objetivo entre los vivos, de cualquier bando. Solo puntúa la primera votación de cada mesa: los desempates y «No sale nadie» no suman.{g.auto ? ' Los umbrales se calculan con el calendario y el número de jugadores.' : ''}</p>
             <div className="row between" style={{ alignItems: 'flex-end' }}>
                 <div>
                     <div className="label">Objetivo de hoy</div>
                     <div className="display" style={{ fontSize: '2.6rem' }}>{g.target ? g.target.name : 'Sin objetivo'}</div>
-                    {g.target && <div className="small muted">{g.target.votes} votos recibidos hoy</div>}
+                    {g.target && <div className="small muted"><span className="num">{g.target.votes}</span> votos recibidos hoy</div>}
                 </div>
                 <div style={{ textAlign: 'right' }}>
                     <div className="big-number">{g.skulls}</div>
@@ -540,7 +598,7 @@ function ShareTab({ s, code, act }) {
             <section className="section stack-sm">
                 <h3>Para otro MC</h3>
                 <CopyBox value={mcLink} />
-                <p className="small muted m0">Quien abra este enlace dirige la partida y ve todos los roles. Sirve para un MC a distancia o para usar varios móviles.</p>
+                <p className="small muted m0">Quien abra este enlace dirige la partida y puede ver todos los roles. Sirve para un MC a distancia o para usar varios móviles.</p>
             </section>
             <form className="section stack-sm" onSubmit={async e => { e.preventDefault(); if (await act('mc:password', { password }, 'Contraseña guardada')) setPassword(''); }}>
                 <h3>Contraseña del panel</h3>
@@ -553,7 +611,7 @@ function ShareTab({ s, code, act }) {
                 <section className="section stack-sm">
                     <h3>Otra partida</h3>
                     <p className="small muted m0">Vuelve a la sala de espera con los mismos jugadores y pruebas. Se borran roles, puntuaciones y chats.</p>
-                    <button className="btn danger" onClick={() => window.confirm('¿Empezar otra partida con los mismos jugadores?') && act('mc:restart')}>Empezar otra partida</button>
+                    <HoldButton onConfirm={() => act('mc:restart')}>Empezar otra partida</HoldButton>
                 </section>
             )}
         </>

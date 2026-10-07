@@ -61,17 +61,18 @@ export default function Home() {
                     </label>
                     {error && <p className="accent small m0">{error}</p>}
                     <button className="btn primary block lg" disabled={busy || code.length !== 4}>
-                        Entrar <ArrowRight size={20} />
+                        {busy ? <><span className="spinner-sm" />Entrando…</> : <>Entrar <ArrowRight size={20} /></>}
                     </button>
+                    {!busy && code.length !== 4 && <p className="btn-hint m0">Escribe los 4 caracteres del código</p>}
                 </form>
 
                 {games.length > 0 && (
                     <section className="section stack-sm" style={{ marginTop: 32 }}>
                         <h3>Tus partidas</h3>
                         {games.map(g => (
-                            <Link key={g.kind + g.code} className="btn ghost block" style={{ justifyContent: 'space-between' }} to={`/${g.kind === 'mc' ? 'mc' : 'p'}/${g.code}`}>
+                            <Link key={g.kind + g.code} className="btn block" style={{ justifyContent: 'space-between' }} to={`/${g.kind === 'mc' ? 'mc' : 'p'}/${g.code}`}>
                                 <span className="row nowrap">{g.kind === 'mc' ? <Crown size={20} /> : <User size={20} />}{g.kind === 'mc' ? 'Dirigir' : 'Jugar'}</span>
-                                <span className="brand">{g.code}</span>
+                                <span className="room-code" style={{ fontSize: '1rem' }}>{g.code}</span>
                             </Link>
                         ))}
                     </section>

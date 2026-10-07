@@ -28,6 +28,17 @@ export default function TV() {
 
     useSocketEvent('state', setView);
 
+    // La tele no debe apagarse a mitad de partida
+    useEffect(() => {
+        let lock = null;
+        const request = async () => {
+            try { if ('wakeLock' in navigator && document.visibilityState === 'visible') lock = await navigator.wakeLock.request('screen'); } catch (_) { /* no soportado */ }
+        };
+        request();
+        document.addEventListener('visibilitychange', request);
+        return () => { document.removeEventListener('visibilitychange', request); if (lock) lock.release().catch(() => {}); };
+    }, []);
+
     if (missing) return <Loading text={`No existe la partida ${code}`} />;
     if (!view) return <Loading text="Conectando" />;
 
@@ -59,19 +70,20 @@ export default function TV() {
                         <div key={p.id} className={`tv-player ${p.alive ? '' : 'dead'}`}>
                             <Avatar player={p} />
                             <span className="name">{p.name}</span>
-                            {!p.alive && <span className="sub">{p.eliminatedBy === 'murder' ? 'Asesinado' : 'Desterrado'}{p.role ? `, ${p.role === 'traitor' ? view.factions.traitor : view.factions.loyal}` : ''}</span>}
+                            {!p.alive && <span className="sub">{p.eliminatedBy === 'murder' ? 'Asesinato' : 'Destierro'}{p.role ? `, ${p.role === 'traitor' ? view.factions.traitor : view.factions.loyal}` : ''}</span>}
                             {view.phase === 'end' && p.alive && p.role && <span className="sub">{p.role === 'traitor' ? view.factions.traitor : view.factions.loyal}</span>}
                         </div>
                     ))}
                 </div>
 
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '4vmin' }}>
+                <div className="tv-side">
                     {view.phase === 'lobby' && (
                         <div className="tv-join">
                             {qr && <img src={qr} alt="" />}
                             <div>
                                 <div className="label">Entrad con el código</div>
                                 <div className="tv-code">{code}</div>
+                                <div className="label" style={{ marginTop: '1vmin' }}>{joinUrl.replace(/^https?:\/\//, '')}</div>
                             </div>
                         </div>
                     )}
@@ -85,14 +97,26 @@ export default function TV() {
                             <TestsTable tests={view.tests} />
                         </div>
                     )}
-                    {view.ghosts && view.ghosts.skulls > 0 && (
+                    {view.ghosts && (
                         <div>
-                            <div className="label">La Sociedad Secreta de los Fantasmas consiguió {view.ghosts.skulls} calaveras</div>
+                            <div className="label">La Sociedad Secreta de los Fantasmas: los eliminados tenían un objetivo secreto cada día</div>
+                            <div className="big-number" style={{ fontSize: '7vmin', marginTop: '1vmin' }}>{view.ghosts.skulls} <span className="label">calaveras</span></div>
+                            <div className="label">{view.ghosts.percent > 0 ? `Roban el ${view.ghosts.percent}% del botín` : 'No llegan a robar nada'}</div>
                             <div style={{ marginTop: '1.5vmin' }}><Thresholds skulls={view.ghosts.skulls} thresholds={view.ghosts.thresholds} /></div>
                         </div>
                     )}
                 </div>
             </div>
+            {/* Código y QR siempre a la vista para quien se reconecta o llega tarde */}
+            {view.phase !== 'lobby' && view.phase !== 'end' && (
+                <div className="tv-corner">
+                    {qr && <img src={qr} alt="" />}
+                    <div>
+                        <div className="label">Código</div>
+                        <div className="room-code">{code}</div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 }

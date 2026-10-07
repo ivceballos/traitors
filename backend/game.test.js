@@ -1,6 +1,6 @@
 const test = require('node:test');
 const assert = require('node:assert');
-const { Game, GameError, createState, normalizeConfig, ghostLootPercent, isWithinHours, PRESETS } = require('./game');
+const { Game, GameError, createState, normalizeConfig, ghostLootPercent, ghostMaxSkulls, isWithinHours, PRESETS } = require('./game');
 
 // Partida de n jugadores ya empezada, con reparto determinista
 function setup(n = 12, config = {}, tests = []) {
@@ -57,7 +57,7 @@ test('calendario Fieles y Felones: 12 → 10 → 6 → 5', () => {
     const victims = [...loyals];
     // Día 2: 1 mesa + 1 cónclave
     g.advance();
-    g.banish(victims.shift().id);
+    g.banish(victims.shift().id, { targetVotes: 0 });
     assert.strictEqual(g.state.round, null, 'solo una votación el día 2');
     g.advance(); // noche
     g.setNightVictims([victims.shift().id]);
@@ -65,16 +65,16 @@ test('calendario Fieles y Felones: 12 → 10 → 6 → 5', () => {
     assert.strictEqual(g.alive().length, 10);
     // Día 3: 2 mesas + 2 cónclave
     g.advance();
-    g.banish(victims.shift().id);
+    g.banish(victims.shift().id, { targetVotes: 0 });
     assert.ok(g.state.round, 'segunda votación abierta automáticamente');
-    g.banish(victims.shift().id);
+    g.banish(victims.shift().id, { targetVotes: 0 });
     g.advance();
     g.setNightVictims([victims.shift().id, victims.shift().id]);
     g.advance();
     assert.strictEqual(g.alive().length, 6);
     // Día 4: 1 mesa y final
     g.advance();
-    g.banish(victims.shift().id);
+    g.banish(victims.shift().id, { targetVotes: 0 });
     g.advance();
     assert.strictEqual(g.state.phase, 'end');
     assert.strictEqual(g.alive().length, 5);
@@ -175,22 +175,31 @@ test('pruebas: se actualiza la prueba existente (sin duplicados) y el botín es 
     assert.strictEqual(g.publicView('X').maxTreasure, 10000);
 });
 
-test('Fantasmas: umbrales configurables', () => {
-    const t = normalizeConfig({}).ghosts.thresholds;
+test('Fantasmas: umbrales manuales', () => {
+    const t = normalizeConfig({ ghosts: { auto: false, thresholds: [{ skulls: 18, percent: 50 }, { skulls: 26, percent: 75 }, { skulls: 33, percent: 100 }] } }).ghosts.thresholds;
     assert.strictEqual(ghostLootPercent(17, t), 0);
     assert.strictEqual(ghostLootPercent(18, t), 50);
     assert.strictEqual(ghostLootPercent(26, t), 75);
     assert.strictEqual(ghostLootPercent(40, t), 100);
 });
 
-test('Fantasmas: objetivo fiel, 1 calavera por voto y +2 si cae', () => {
+test('Fantasmas: umbrales automáticos según calendario y jugadores', () => {
+    const despedida = normalizeConfig(PRESETS['fieles-felones'].config);
+    assert.strictEqual(ghostMaxSkulls(despedida, 12), 26);
+    const { g } = setup(12, PRESETS['fieles-felones'].config);
+    assert.deepStrictEqual(g.ghostThresholds().map(t => t.skulls), [8, 12, 16]);
+    const small = setup(6).g.ghostThresholds().map(t => t.skulls);
+    assert.ok(small[0] >= 1 && small[0] < small[1] && small[1] < small[2], 'crecientes también con pocos jugadores');
+});
+
+test('Fantasmas: objetivo vivo de cualquier bando, 1 calavera por voto y +2 si cae', () => {
     const { g, loyals } = setup(10);
     g.advance(); g.advance(); g.advance(); // mesa día 2
     voteAll(g, loyals[0].id, loyals[1].id); // primer muerto: aún no hay fantasmas
     assert.strictEqual(g.state.ghosts.history.length, 0);
     g.advance(); g.advance(); // noche -> día 3 (ya hay fantasmas)
     const target = g.state.ghosts.today.targetId;
-    assert.strictEqual(g.getPlayer(target).role, 'loyal');
+    assert.ok(g.getPlayer(target).alive);
     g.advance(); // mesa
     const other = g.alive().find(p => p.id !== target).id;
     const voters = g.alive().length - 1; // todos menos el objetivo le votan
@@ -205,12 +214,51 @@ test('Fantasmas: en persona el MC indica los votos al objetivo', () => {
     g.banish(g.aliveLoyals()[0].id);
     g.advance(); g.advance(); g.advance();
     const target = g.state.ghosts.today.targetId;
-    g.banish(g.aliveLoyals().find(p => p.id !== target).id, { targetVotes: 4 });
+    const other = g.aliveLoyals().find(p => p.id !== target).id;
+    assert.throws(() => g.banish(other), /cuántos votos/);
+    g.banish(other, { targetVotes: 4 });
     assert.strictEqual(g.state.ghosts.skulls, 4);
 });
 
+test('Fantasmas: los desempates y «no sale nadie» no vuelven a puntuar', () => {
+    const { g, loyals } = setup(10, { schedule: [{ roundtable: 0, conclave: 0 }, { roundtable: 1, conclave: 0 }, { roundtable: 2, conclave: 0 }, { roundtable: 1, conclave: 0 }] });
+    g.advance(); g.advance(); g.advance();
+    voteAll(g, loyals[0].id, loyals[1].id);
+    g.advance(); g.advance(); g.advance(); // día 3, ya hay objetivo
+    const target = g.state.ghosts.today.targetId;
+    const others = g.alive().filter(p => p.id !== target);
+    // Empate 4-4 entre el objetivo y otro (dos abstenciones): 4 calaveras
+    const rival = others[0].id;
+    others.slice(1, 5).forEach(p => g.vote(p.id, target));
+    others.slice(5, 8).forEach(p => g.vote(p.id, rival));
+    g.vote(target, rival);
+    assert.throws(() => g.vote(target, others[1].id), /ya está registrado/, 'el voto no se cambia');
+    g.resolveRound();
+    assert.strictEqual(g.state.ghosts.skulls, 4);
+    assert.strictEqual(g.state.round.revotes, 1, 'desempate abierto');
+    g.skipRound();
+    assert.strictEqual(g.state.ghosts.skulls, 4, 'el desempate y el salto no suman');
+});
+
+test('noche: todos señalan sospechoso y el MC ve el recuento', () => {
+    const { g, traitors, loyals } = setup(8);
+    assert.throws(() => g.suspect(loyals[0].id, traitors[0].id), GameError, 'solo de noche');
+    g.advance(); // día 1 sin mesa -> noche
+    g.suspect(loyals[0].id, traitors[0].id);
+    g.suspect(traitors[0].id, loyals[1].id);
+    g.suspect(loyals[2].id, traitors[0].id);
+    assert.throws(() => g.suspect(loyals[3].id, loyals[3].id), /ti mismo/);
+    assert.strictEqual(g.privateView(loyals[0].id).mySuspect, traitors[0].id);
+    assert.strictEqual(g.masterView('X').suspicionTally[traitors[0].id], 2);
+    assert.ok(!JSON.stringify(g.publicView('X')).includes('suspicion'));
+    g.advance(); // amanecer: se reinician y no se anuncia «sin asesinatos» si no tocaba
+    assert.deepStrictEqual(g.state.suspicions, {});
+    assert.ok(!g.state.events.some(e => e.type === 'nomurder'));
+});
+
 test('Fantasmas: el secreto solo lo ven los muertos y el MC hasta el final', () => {
-    const { g, loyals } = setup(10, {}, [{ name: 'X', max: 0 }]);
+    const manual = { auto: false, thresholds: [{ skulls: 18, percent: 50 }, { skulls: 26, percent: 75 }, { skulls: 33, percent: 100 }] };
+    const { g, loyals } = setup(10, { ghosts: manual }, [{ name: 'X', max: 0 }]);
     g.updateTest(g.state.tests[0].id, { score: 10000 });
     g.getPlayer(loyals[0].id).alive = false;
     g.assignGhostTarget();
