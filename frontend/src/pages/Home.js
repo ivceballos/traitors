@@ -83,6 +83,7 @@ export default function Home() {
                 <span className="small muted">¿Diriges la partida?</span>
                 <Link className="btn sm" to="/crear"><Crown size={18} /> Crear partida</Link>
             </footer>
+            <Link className="small muted" to="/ranking" style={{ alignSelf: 'center' }}>Tabla de ganadores</Link>
         </div>
     );
 }

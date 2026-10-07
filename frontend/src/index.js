@@ -6,6 +6,7 @@ import Create from './pages/Create';
 import Player from './pages/Player';
 import Master from './pages/Master';
 import TV from './pages/TV';
+import Ranking from './pages/Ranking';
 import { Atmosphere } from './components';
 import '@fontsource/im-fell-english-sc';
 import '@fontsource/im-fell-english/400-italic.css';
@@ -22,6 +23,7 @@ root.render(
       <Route path="/p/:code" element={<Player />} />
       <Route path="/mc/:code" element={<Master />} />
       <Route path="/tv/:code" element={<TV />} />
+      <Route path="/ranking" element={<Ranking />} />
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   </BrowserRouter>

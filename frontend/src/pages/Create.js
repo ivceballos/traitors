@@ -97,6 +97,16 @@ export default function Create() {
                     <span>Nombre de la partida</span>
                     <input className="input" value={config.name} maxLength={60} onChange={e => set('name', e.target.value)} />
                 </label>
+                <div className="field">
+                    <span>¿Dónde jugáis?</span>
+                    <Segmented value={config.mode} onChange={v => setConfig(c => ({ ...c, mode: v, ...(v === 'online' ? { voting: 'app' } : {}) }))}
+                        options={[{ value: 'presencial', label: 'Juntos' }, { value: 'online', label: 'A distancia' }]} />
+                    <span className="tiny muted">
+                        {config.mode === 'online'
+                            ? 'Cada uno desde su casa: se vota en la app y podéis usar el horario automático. Sin Sociedad de los Fantasmas.'
+                            : 'Todos en el mismo sitio, con la tele de fondo. Los eliminados forman la Sociedad de los Fantasmas.'}
+                    </span>
+                </div>
                 <div className="row between">
                     <span>Jugadores</span>
                     <Stepper value={players} min={MIN_PLAYERS} max={MAX_PLAYERS} onChange={setPlayersAuto} label="Jugadores" />
@@ -185,6 +195,26 @@ export default function Create() {
                             </label>
                         )}
                         <label className="check"><input type="checkbox" checked={config.revealRole} onChange={e => set('revealRole', e.target.checked)} /> Revelar el rol de cada eliminado</label>
+                        <label className="check">
+                            <input type="checkbox" checked={config.endgame} onChange={e => set('endgame', e.target.checked)} />
+                            Final del programa: tras el último día, los supervivientes deciden si acabar (por unanimidad) o desterrar a alguien más
+                        </label>
+                    </section>
+
+                    <section className="card stack">
+                        <label className="check">
+                            <input type="checkbox" checked={config.timetable.enabled} onChange={e => set('timetable', { ...config.timetable, enabled: e.target.checked })} />
+                            <h3 className="m0">Horario automático</h3>
+                        </label>
+                        <p className="muted tiny m0">La partida avanza sola cada día a estas horas. El MC puede avanzar a mano o pausarlo cuando quiera.</p>
+                        <div className="row nowrap">
+                            {[['dawn', 'Amanecer'], ['roundtable', 'Mesa redonda'], ['night', 'Noche']].map(([k, l]) => (
+                                <label key={k} className="field grow">
+                                    <span className="small">{l}</span>
+                                    <input className="input" type="time" value={config.timetable[k]} onChange={e => set('timetable', { ...config.timetable, [k]: e.target.value })} />
+                                </label>
+                            ))}
+                        </div>
                     </section>
 
                     <section className="card stack">
@@ -206,7 +236,7 @@ export default function Create() {
                         </label>
                     </section>
 
-                    <section className="card hot stack">
+                    {config.mode !== 'online' && <section className="card hot stack">
                         <label className="check">
                             <input type="checkbox" checked={config.ghosts.enabled} onChange={e => setGhosts('enabled', e.target.checked)} />
                             <h3 className="m0">Sociedad Secreta de los Fantasmas</h3>
@@ -245,7 +275,7 @@ export default function Create() {
                                 )}
                             </>
                         )}
-                    </section>
+                    </section>}
 
                     <section className="card stack">
                         <h3 className="m0">Pruebas y botín</h3>

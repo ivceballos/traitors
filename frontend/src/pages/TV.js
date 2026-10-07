@@ -4,7 +4,7 @@ import QRCode from 'qrcode';
 import { formatEuros, formatGold, send, socket } from '../api';
 import { Avatar, Loading, OfflineBanner, Seal, TestsTable, Thresholds, useConnection, useSocketEvent } from '../components';
 
-const PHASE_TITLE = { lobby: 'Sala de espera', day: 'Día', roundtable: 'Mesa redonda', night: 'Noche', end: 'Final' };
+const PHASE_TITLE = { lobby: 'Sala de espera', day: 'Día', roundtable: 'Mesa redonda', night: 'Noche', endgame: 'El final', end: 'Final' };
 
 // Pantalla pública para la tele: jugadores y botín, sin secretos. Se actualiza en tiempo real.
 export default function TV() {
@@ -50,7 +50,7 @@ export default function TV() {
 
     return (
         <div className="tv">
-            {spot && <Spotlight test={spot} view={view} />}
+            {view.quiz ? <QuizScreen view={view} /> : spot && <Spotlight test={spot} view={view} />}
             <OfflineBanner connected={connected} />
             <header className="tv-header">
                 <div className="row nowrap" style={{ gap: '3vmin' }}>
@@ -61,6 +61,12 @@ export default function TV() {
                     {view.phase === 'end' && <Seal kind={view.winner} size={160} className="tv-seal" />}
                     {view.phase === 'end' ? `Ganan los ${winners}` : title}
                     {(view.phase === 'roundtable' || view.phase === 'night') && <div className="label" style={{ marginTop: '1vmin' }}>Día {view.day} de {view.days}</div>}
+                    {view.phase === 'endgame' && (
+                        <div className="label" style={{ marginTop: '1vmin' }}>
+                            ¿Quedan {view.factions.traitor}? Solo se acaba por unanimidad
+                            {view.endgame && view.voting === 'app' && ` · han decidido ${view.endgame.voters.length} de ${view.players.filter(p => p.alive).length}`}
+                        </div>
+                    )}
                 </div>
             </header>
 
@@ -117,6 +123,42 @@ export default function TV() {
                     </div>
                 </div>
             )}
+        </div>
+    );
+}
+
+// ¿Quién dijo qué?: la respuesta a pantalla completa; al desvelar, de quién era y cuánto oro suma
+function QuizScreen({ view }) {
+    const q = view.quiz;
+    const author = q.revealed && view.players.find(p => p.id === q.authorId);
+    const alive = view.players.filter(p => p.alive).length;
+    return (
+        <div className="tv-spotlight">
+            <div>
+                <div className="label">¿Quién dijo qué?</div>
+                <div className="label" style={{ marginTop: '2vmin' }}>{q.question}</div>
+                <div className="tv-title" style={{ marginTop: '2vmin' }}>«{q.answer}»</div>
+            </div>
+            <div className="foot">
+                {author ? (
+                    <div className="row nowrap" style={{ gap: '3vmin' }}>
+                        <Avatar player={author} size={120} />
+                        <div>
+                            <div className="label">Lo dijo</div>
+                            <div className="big-number">{author.name}</div>
+                        </div>
+                    </div>
+                ) : (
+                    <div>
+                        <div className="label">Respuestas</div>
+                        <div className="big-number">{q.guessers.length} de {alive - 1}</div>
+                    </div>
+                )}
+                <div style={{ textAlign: 'right' }}>
+                    <div className="label">{q.revealed ? `${q.correct.length} aciertos` : 'Cada acierto suma oro'}</div>
+                    <div className="big-number" style={{ fontSize: '7vmin' }}>{q.revealed ? `+${formatGold(q.gold)}` : formatEuros(view.treasure, view.goldPerEuro)}</div>
+                </div>
+            </div>
         </div>
     );
 }

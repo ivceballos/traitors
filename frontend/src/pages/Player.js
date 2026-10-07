@@ -1,11 +1,11 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import {
-    Check, DeviceMobile, Envelope, Eye, EyeSlash, Gavel, Ghost, HourglassMedium, Knife, MoonStars, PaperPlaneRight, Scales, SunHorizon, Trophy
+    Check, Crown, DeviceMobile, Envelope, Eye, EyeSlash, Gavel, Ghost, HourglassMedium, Knife, MoonStars, PaperPlaneRight, Question, Scales, Shield, SunHorizon, Trophy
 } from '@phosphor-icons/react';
 import { formatEuros, formatGold, playerTokenKey, send, socket, storage } from '../api';
 import {
-    ActionButton, Art, Avatar, CopyBox, HoldButton, Loading, Modal, Seal, OfflineBanner, PhotoPicker, RoleTag, TestsTable, Thresholds, Toasts,
+    ActionButton, Art, Avatar, CopyBox, HoldButton, Loading, Modal, Seal, Segmented, OfflineBanner, PhotoPicker, RoleTag, TestsTable, Thresholds, Toasts,
     useConnection, useSocketEvent, useToasts
 } from '../components';
 
@@ -140,13 +140,20 @@ export default function Player() {
 function JoinScreen({ view, code, onJoined, onError }) {
     const [name, setName] = useState('');
     const [photo, setPhoto] = useState(null);
+    const [wantsTraitor, setWantsTraitor] = useState('maybe');
+    // Tres preguntas de la entrevista al azar; las respuestas salen luego en «¿Quién dijo qué?»
+    const [questions] = useState(() => [...(view.questions || [])].sort(() => Math.random() - 0.5).slice(0, view.interviewCount || 3));
+    const [answers, setAnswers] = useState({});
     const [busy, setBusy] = useState(false);
 
     const join = async e => {
         e.preventDefault();
         setBusy(true);
         try {
-            const { token } = await send('player:join', { code, name: name.trim(), photo });
+            const { token } = await send('player:join', {
+                code, name: name.trim(), photo, wantsTraitor,
+                answers: questions.map(q => ({ q, a: (answers[q] || '').trim() })).filter(x => x.a)
+            });
             storage.set(playerTokenKey(code), token);
             onJoined();
         } catch (err) {
@@ -168,6 +175,24 @@ function JoinScreen({ view, code, onJoined, onError }) {
                         <span>Tu nombre</span>
                         <input className="input" value={name} maxLength={24} onChange={e => setName(e.target.value)} autoComplete="given-name" />
                     </label>
+                    <div className="field">
+                        <span>¿Te gustaría ser de los {view.factions.traitor}?</span>
+                        <Segmented value={wantsTraitor} onChange={setWantsTraitor}
+                            options={[{ value: 'yes', label: 'Sí' }, { value: 'maybe', label: 'Me da igual' }, { value: 'no', label: 'Prefiero que no' }]} />
+                        <span className="tiny muted">Es secreto. Cuenta para el sorteo, pero no lo decide: le puede tocar a cualquiera.</span>
+                    </div>
+                    {questions.length > 0 && (
+                        <section className="card stack-sm">
+                            <h3 className="m0">Entrevista secreta</h3>
+                            <p className="tiny muted m0">Nadie sabrá que son tuyas… hasta «¿Quién dijo qué?».</p>
+                            {questions.map(q => (
+                                <label key={q} className="field">
+                                    <span className="small">{q}</span>
+                                    <input className="input" maxLength={120} value={answers[q] || ''} onChange={e => setAnswers(a => ({ ...a, [q]: e.target.value }))} />
+                                </label>
+                            ))}
+                        </section>
+                    )}
                     <button className="btn primary block lg" disabled={busy || !name.trim()}>{busy ? <><span className="spinner-sm" />Enviando…</> : 'Unirme'}</button>
                     {!name.trim() && <p className="btn-hint m0">Escribe tu nombre</p>}
                 </form>
@@ -200,9 +225,14 @@ function Game({ view, me, chat, act, onShowRole, code, push }) {
                 <PhaseBlock view={view} me={me} self={self} />
 
                 {/* Lo que toca hacer ahora va siempre arriba */}
+                {me.hasShield && (
+                    <p className="note gold m0 row nowrap" style={{ gap: 8 }}><Shield size={20} weight="fill" /> Tienes el escudo: esta noche no pueden asesinarte. Nadie más lo sabe.</p>
+                )}
+                {view.quiz && <QuizPanel view={view} me={me} self={self} act={act} />}
                 {view.spotlight && <SpotlightCard view={view} />}
                 {me.inbox.length > 0 && <Inbox inbox={me.inbox} />}
                 {view.phase === 'lobby' && <Lobby view={view} self={self} act={act} push={push} />}
+                {view.phase === 'endgame' && self.alive && <EndgamePanel view={view} me={me} act={act} />}
                 {view.phase === 'roundtable' && self.alive && <RoundtablePanel view={view} me={me} act={act} />}
                 {view.phase === 'night' && self.alive && <SuspectPanel view={view} me={me} act={act} />}
                 {dead && me.ghostSociety && <GhostPanel ghost={me.ghostSociety} />}
@@ -265,7 +295,7 @@ function TopBar({ view, onShowRole, hasRole }) {
     );
 }
 
-const PHASE_ICON = { lobby: HourglassMedium, day: SunHorizon, roundtable: Scales, night: MoonStars, end: Trophy };
+const PHASE_ICON = { lobby: HourglassMedium, day: SunHorizon, roundtable: Scales, night: MoonStars, endgame: Crown, end: Trophy };
 
 // Título de la fase y una línea de «qué toca ahora». De noche es igual para todos los bandos.
 function PhaseBlock({ view, me, self }) {
@@ -296,6 +326,13 @@ function PhaseBlock({ view, me, self }) {
             title = 'Noche';
             text = `Los ${view.factions.traitor} se reúnen en secreto.`;
             now = 'Señala abajo a tu sospechoso. Si tienes algo más que hacer esta noche, está en «Mi rol».';
+            break;
+        case 'endgame':
+            title = 'El final';
+            text = `Quedáis ${alive}. Si creéis que ya no quedan ${view.factions.traitor}, se acaba. Si alguien duda, se destierra a uno más.`;
+            now = view.voting === 'inperson'
+                ? 'Decidid en voz alta. Solo se acaba si todos estáis de acuerdo.'
+                : (me.myEndgame ? 'Ya has decidido. Espera al resto.' : 'Elige abajo. Hace falta unanimidad para acabar.');
             break;
         default:
     }
@@ -393,6 +430,63 @@ function RoundtablePanel({ view, me, act }) {
                     onClick={async () => { if (await act('vote', { targetId: chosen.id })) { setPick(null); return true; } return false; }}>
                     {chosen ? `Confirmar voto a ${chosen.name}` : 'Confirmar voto'}
                 </ActionButton>
+            )}
+        </section>
+    );
+}
+
+// ---------- Final: acabar o desterrar a uno más ----------
+
+function EndgamePanel({ view, me, act }) {
+    if (view.voting !== 'app' || !view.endgame) return null;
+    const alive = view.players.filter(p => p.alive).length;
+    return (
+        <section className="card hot stack">
+            <h3 className="m0">¿Quedan {view.factions.traitor} entre vosotros?</h3>
+            <p className="small muted m0">Han decidido {view.endgame.voters.length} de {alive}. Solo se acaba si todos elegís acabar.</p>
+            {me.myEndgame ? (
+                <p className="note accent m0">{me.myEndgame === 'end' ? 'Has elegido acabar la partida.' : 'Has elegido desterrar a alguien más.'}</p>
+            ) : (
+                <div className="cols">
+                    <ActionButton className="primary block lg" onClick={() => act('endgame-vote', { choice: 'end' })}>Acabar: ya no quedan</ActionButton>
+                    <ActionButton className="block lg" onClick={() => act('endgame-vote', { choice: 'banish' })}>Desterrar a otro</ActionButton>
+                </div>
+            )}
+        </section>
+    );
+}
+
+// ---------- ¿Quién dijo qué? ----------
+
+function QuizPanel({ view, me, self, act }) {
+    const q = view.quiz;
+    const [pick, setPick] = useState(null);
+    useEffect(() => setPick(null), [q.id]);
+    const author = q.revealed && view.players.find(p => p.id === q.authorId);
+    const myGuess = me.myQuizGuess && view.players.find(p => p.id === me.myQuizGuess);
+    const chosen = pick && view.players.find(p => p.id === pick);
+    return (
+        <section className="card hot stack">
+            <h3 className="m0 row nowrap" style={{ gap: 8 }}><Question size={20} /> ¿Quién dijo qué?</h3>
+            <p className="small muted m0">{q.question}</p>
+            <p className="display m0" style={{ fontSize: '2rem' }}>«{q.answer}»</p>
+            {q.revealed ? (
+                <p className="note accent m0">
+                    Era de <strong>{author?.name}</strong>. {q.correct.includes(me.playerId) ? '¡Has acertado!' : myGuess ? 'No has acertado.' : ''} {q.correct.length} {q.correct.length === 1 ? 'acierto' : 'aciertos'}: +{formatGold(q.gold)} para el botín.
+                </p>
+            ) : me.quizIsMine ? (
+                <p className="note m0">Esta respuesta es tuya. Pon cara de póker.</p>
+            ) : !self.alive && view.phase !== 'lobby' ? null : myGuess ? (
+                <p className="note m0">Has dicho que es de <strong>{myGuess.name}</strong>. Espera a que el MC lo desvele.</p>
+            ) : (
+                <>
+                    <PlayerGrid players={view.players.filter(p => p.id !== me.playerId)} factions={view.factions} meId={me.playerId}
+                        onPick={p => setPick(p.id)} selected={[pick].filter(Boolean)} />
+                    <ActionButton className="primary block" disabled={!chosen} hint="Toca a quien creas que lo dijo"
+                        onClick={() => act('quiz-guess', { authorId: chosen.id })}>
+                        {chosen ? `Es de ${chosen.name}` : 'Elegir'}
+                    </ActionButton>
+                </>
             )}
         </section>
     );
@@ -798,9 +892,16 @@ function EndScreen({ view, me, chat, self, act }) {
                         <span className="big-number">{formatEuros(kept, view.goldPerEuro)}</span>
                         <span className="muted small">para el bote del viaje</span>
                     </div>
+                    {view.results && view.results.players.some(p => p.won) && (
+                        <p className="small m0">
+                            Se lo reparten {view.results.players.filter(p => p.won).map(p => p.name).join(', ')}:{' '}
+                            <strong>{formatEuros(view.results.players.find(p => p.won).gold, view.goldPerEuro)}</strong> cada uno.
+                        </p>
+                    )}
                     <TestsTable tests={view.tests} />
                 </section>
             )}
+            <Link to="/ranking" className="btn block"><Trophy size={18} /> Tabla de ganadores</Link>
 
             <div className="cols">
                 <section className="card">

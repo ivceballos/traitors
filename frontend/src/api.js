@@ -4,7 +4,9 @@ import { io } from 'socket.io-client';
 // (NAS principal y Render de reserva); si está vacía, se usa el de siempre:
 // en desarrollo el puerto 4000 de la misma máquina (el hostname actual permite
 // probar desde el móvil en la misma red) y en producción el mismo origen.
-const configured = (window.FF_SERVERS || []).filter(Boolean).map(s => s.replace(/\/+$/, ''));
+// En el propio ordenador (localhost) se ignora la lista: se prueba siempre contra el servidor local
+const isLocal = /^(localhost|127\.0\.0\.1|\[::1\])$/.test(window.location.hostname);
+const configured = isLocal ? [] : (window.FF_SERVERS || []).filter(Boolean).map(s => s.replace(/\/+$/, ''));
 const SERVERS = process.env.REACT_APP_SERVER_URL
     ? [process.env.REACT_APP_SERVER_URL]
     : configured.length

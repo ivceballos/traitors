@@ -308,6 +308,7 @@ button.player-tile:disabled { cursor: default; }
 .note { padding: 10px 14px; border-left: 2px solid var(--line-strong); color: var(--muted); font-size: 0.92rem; }
 .note.accent { border-left-color: var(--gold); color: var(--text); }
 .note.felon { border-left-color: var(--accent); color: var(--text); }
+.note.gold { border-left-color: var(--gold); color: var(--gold); background: rgba(214, 170, 76, 0.08); }
 
 .modal-backdrop { position: fixed; inset: 0; z-index: 20; background: rgba(4, 7, 12, 0.86); display: flex; align-items: center; justify-content: center; padding: 16px; }
 .modal { width: 100%; max-width: 440px; max-height: 92dvh; overflow-y: auto; }

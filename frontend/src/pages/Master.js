@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import {
-    ArrowRight, ChatCircle, Coins, Eye, EyeSlash, Gavel, Ghost, Knife, LinkSimple, Megaphone, PaperPlaneRight, ShareNetwork, Television, Trash, Users
+    ArrowRight, ChatCircle, Coins, Eye, EyeSlash, Gavel, Ghost, Knife, LinkSimple, Megaphone, PaperPlaneRight, ShareNetwork, Shield as ShieldIcon, Television, Trash, Users
 } from '@phosphor-icons/react';
 import { formatEuros, formatGold, http, mcTokenKey, send, socket, storage } from '../api';
 import {
@@ -154,13 +154,16 @@ function nextActionLabel(s) {
         case 'day': return s.today.roundtable > 0 ? 'Abrir mesa redonda' : 'Pasar a la noche';
         case 'roundtable':
             if (s.round) return 'Cerrar la mesa sin más destierros';
-            return s.day >= s.days ? 'Terminar la partida' : 'Pasar a la noche';
+            if (s.endgameRound) return 'Volver a decidir si acabar';
+            if (s.day >= s.days) return s.endgameEnabled && s.players.filter(p => p.alive).length > 2 ? 'Pasar al final' : 'Terminar la partida';
+            return 'Pasar a la noche';
         case 'night': return `Amanecer del día ${s.day + 1}`;
+        case 'endgame': return 'Terminar la partida ya';
         default: return null;
     }
 }
 
-const PHASE_TITLE = { lobby: 'Sala de espera', day: 'Día', roundtable: 'Mesa redonda', night: 'Noche', end: 'Final' };
+const PHASE_TITLE = { lobby: 'Sala de espera', day: 'Día', roundtable: 'Mesa redonda', night: 'Noche', endgame: 'El final', end: 'Final' };
 
 function GameTab({ s, act, showRoles }) {
     const label = nextActionLabel(s);
@@ -194,6 +197,9 @@ function GameTab({ s, act, showRoles }) {
             {s.phase === 'lobby' && <LobbyInfo s={s} />}
             {s.phase === 'roundtable' && <RoundtableControl s={s} act={act} showRoles={showRoles} />}
             {s.phase === 'night' && <NightControl s={s} act={act} showRoles={showRoles} />}
+            {s.phase === 'endgame' && <EndgameControl s={s} act={act} />}
+            {['day', 'roundtable', 'night', 'endgame'].includes(s.phase) && <QuizControl s={s} act={act} />}
+            {s.phase !== 'end' && <TimetableControl s={s} act={act} />}
             {s.phase === 'end' && (
                 <p className="note accent">Ganan los {s.winner === 'traitor' ? s.config.factions.traitor : s.config.factions.loyal}. Puedes empezar otra partida con los mismos jugadores desde Compartir.</p>
             )}
@@ -226,6 +232,82 @@ function GameTab({ s, act, showRoles }) {
     );
 }
 
+// Final: los jugadores votan en la app, o el MC registra lo que decidan en voz alta
+function EndgameControl({ s, act }) {
+    const alive = s.players.filter(p => p.alive);
+    const votes = s.endgameVotes || {};
+    const label = { end: 'acabar', banish: 'desterrar' };
+    return (
+        <section className="card hot stack">
+            <h3 className="m0">El final</h3>
+            {s.config.voting === 'app' ? (
+                <ul className="event-list">
+                    {alive.map(p => <li key={p.id} className="row between nowrap"><span>{p.name}</span><span className="muted">{votes[p.id] ? label[votes[p.id]] : 'pensando…'}</span></li>)}
+                </ul>
+            ) : (
+                <p className="small muted m0">Que decidan en voz alta. Solo se acaba si todos están de acuerdo.</p>
+            )}
+            <div className="cols">
+                <HoldButton className="block" hint={null} onConfirm={() => act('mc:endgame-decide', { choice: 'end' })}>Unanimidad: acabar</HoldButton>
+                <ActionButton className="block" onClick={() => act('mc:endgame-decide', { choice: 'banish' })}>Desterrar a otro</ActionButton>
+            </div>
+        </section>
+    );
+}
+
+// ¿Quién dijo qué?: el MC saca una respuesta de la entrevista, la desvela y suma el oro
+function QuizControl({ s, act }) {
+    const q = s.quizFull;
+    const author = q && s.players.find(p => p.id === q.authorId);
+    const guesses = q ? Object.keys(q.guesses).length : 0;
+    return (
+        <section className="card stack-sm">
+            <div className="row between">
+                <h3 className="m0">¿Quién dijo qué?</h3>
+                <span className="small muted">{s.quizLeft} respuestas sin usar</span>
+            </div>
+            {q && (
+                <>
+                    <p className="small muted m0">{q.question}</p>
+                    <p className="m0"><strong>«{q.answer}»</strong> — es de {author?.name}</p>
+                    <p className="small m0">{q.revealed ? `${q.correct.length} aciertos: +${formatGold(q.gold)}` : `${guesses} han respondido`}</p>
+                </>
+            )}
+            <div className="row">
+                {q && !q.revealed && <ActionButton className="primary" onClick={() => act('mc:quiz-reveal')}>Desvelar</ActionButton>}
+                {(!q || q.revealed) && s.quizLeft > 0 && <ActionButton className={q ? 'primary' : ''} onClick={() => act('mc:quiz-next')}>{q ? 'Siguiente respuesta' : 'Sacar una respuesta'}</ActionButton>}
+                {q && <ActionButton onClick={() => act('mc:quiz-close')}>Cerrar</ActionButton>}
+            </div>
+        </section>
+    );
+}
+
+// Horario automático: se activa, pausa o cambia en cualquier momento; el MC siempre puede avanzar a mano
+function TimetableControl({ s, act }) {
+    const tt = s.config.timetable;
+    const [draft, setDraft] = useState(tt);
+    useEffect(() => setDraft(tt), [tt.enabled, tt.dawn, tt.roundtable, tt.night]); // eslint-disable-line react-hooks/exhaustive-deps
+    const changed = draft.dawn !== tt.dawn || draft.roundtable !== tt.roundtable || draft.night !== tt.night;
+    return (
+        <section className="card stack-sm">
+            <label className="check">
+                <input type="checkbox" checked={tt.enabled} onChange={e => act('mc:timetable', { enabled: e.target.checked }, e.target.checked ? 'Horario automático activado' : 'Horario automático en pausa')} />
+                <h3 className="m0">Horario automático</h3>
+            </label>
+            <p className="tiny muted m0">La partida avanza sola a estas horas. Puedes seguir avanzando a mano cuando quieras.</p>
+            <div className="row nowrap">
+                {[['dawn', 'Amanecer'], ['roundtable', 'Mesa'], ['night', 'Noche']].map(([k, l]) => (
+                    <label key={k} className="field grow">
+                        <span className="tiny">{l}</span>
+                        <input className="input" type="time" value={draft[k]} onChange={e => setDraft(d => ({ ...d, [k]: e.target.value }))} />
+                    </label>
+                ))}
+            </div>
+            {changed && <ActionButton className="block" onClick={() => act('mc:timetable', draft, 'Horario guardado')}>Guardar horario</ActionButton>}
+        </section>
+    );
+}
+
 function LobbyInfo({ s }) {
     const c = s.config;
     const total = c.schedule.reduce((n, d) => n + d.roundtable + d.conclave, 0);
@@ -236,6 +318,7 @@ function LobbyInfo({ s }) {
             <p className="small m0">Mesa redonda {c.voting === 'app' ? 'votando en la app' : 'en persona'}{c.voting === 'app' && (c.tieRule === 'revote' ? ', desempate entre empatados' : ', con empate no sale nadie')}.</p>
             <p className="small m0">Cónclave {c.conclaveHours ? `de ${c.conclaveHours.start} a ${c.conclaveHours.end}` : 'abierto toda la noche'}{c.invitation ? ', con reclutamiento la primera noche' : ''}.</p>
             {c.ghosts.enabled && <p className="small m0">Sociedad de los Fantasmas activada.</p>}
+            <p className="small m0">{c.mode === 'online' ? 'Partida a distancia.' : 'Partida en persona.'}{c.endgame ? ' Al final, votación para acabar o seguir.' : ''}</p>
         </section>
     );
 }
@@ -417,6 +500,13 @@ function PlayersTab({ s, act, showRoles, code }) {
                             <div className="tiny muted">{p.alive ? 'Vivo' : `${p.eliminatedBy === 'murder' ? 'Asesinado' : 'Desterrado'} el día ${p.eliminatedDay}`}</div>
                         </div>
                         {showRoles && <RoleTag role={s.roles[p.id]} factions={s.config.factions} />}
+                        {p.alive && ['day', 'roundtable', 'night'].includes(s.phase) && (
+                            <button className={`btn sm icon ${s.shields.includes(p.id) ? 'primary' : ''}`} aria-pressed={s.shields.includes(p.id)}
+                                title={s.shields.includes(p.id) ? 'Quitar el escudo' : 'Dar el escudo (le protege esta noche)'} aria-label="Escudo"
+                                onClick={() => act('mc:shield', { playerId: p.id, on: !s.shields.includes(p.id) }, s.shields.includes(p.id) ? `Escudo retirado a ${p.name}` : `${p.name} tiene el escudo esta noche`)}>
+                                <ShieldIcon size={18} weight={s.shields.includes(p.id) ? 'fill' : 'regular'} />
+                            </button>
+                        )}
                         <button className="btn sm icon" title="Enlace para volver a entrar" aria-label="Enlace para volver a entrar" onClick={() => getLink(p)}><LinkSimple size={18} /></button>
                         <button className="btn sm icon" title="Mensaje privado" aria-label="Mensaje privado" onClick={() => setMessageTo(messageTo === p.id ? null : p.id)}><PaperPlaneRight size={18} /></button>
                         {s.phase === 'lobby' && (
