@@ -22,7 +22,7 @@ function App() {
     const [view, setView] = useState(null); // estado público
     const [me, setMe] = useState(null); // estado privado del jugador
     const [status, setStatus] = useState(storage.get(TOKEN_KEY) ? 'auth' : 'anon'); // anon | auth | joined
-    const [chat, setChat] = useState({ general: [], traitors: [] });
+    const [chat, setChat] = useState({ general: [], traitors: [], dead: [] });
 
     useEffect(() => {
         // Se re-autentica en cada (re)conexión: recargas, cortes de red, móvil en reposo...
@@ -42,12 +42,12 @@ function App() {
             setMe(null);
             setStatus('anon');
         };
-        const onChat = msg => setChat(c => ({ ...c, [msg.channel]: [...c[msg.channel], msg].slice(-200) }));
+        const onChat = msg => setChat(c => ({ ...c, [msg.channel]: [...(c[msg.channel] || []), msg].slice(-200) }));
         const onError = msg => push(msg, 'error');
         const onNotice = msg => push(msg);
         const onReset = () => {
             onAuthFailed();
-            setChat({ general: [], traitors: [] });
+            setChat({ general: [], traitors: [], dead: [] });
             push('El Maestro de Ceremonias ha reiniciado el juego');
         };
 
@@ -90,7 +90,7 @@ function App() {
     } else if (status !== 'joined' || !me) {
         content = <JoinScreen view={view} />;
     } else if (view.phase === 'gameover') {
-        content = <GameOverScreen view={view} me={me} />;
+        content = <GameOverScreen view={view} me={me} chat={chat} />;
     } else {
         content = <GameScreen view={view} me={me} chat={chat} />;
     }
@@ -323,22 +323,46 @@ function GameScreen({ view, me, chat }) {
     );
 }
 
+const CHANNELS = {
+    general: { label: 'General', className: '' },
+    traitors: { label: 'Traidores 🔒', className: 'traitors', button: 'red' },
+    dead: { label: 'Muertos 💀', className: 'dead', button: 'ghost' }
+};
+
 function Chat({ me, self, view, chat }) {
     const isTraitor = me.role === 'traidor';
+    const isDead = !self.alive;
+    const traitorChatOpen = view.phase === 'night' && view.conclaveOpen;
+    const available = ['general', ...(isTraitor ? ['traitors'] : []), ...(isDead ? ['dead'] : [])];
+
     const [channel, setChannel] = useState('general');
     const [message, setMessage] = useState('');
+    const [seen, setSeen] = useState({});
     const logRef = useRef(null);
-    const active = isTraitor ? channel : 'general';
+    const active = available.includes(channel) ? channel : 'general';
     const messages = chat[active] || [];
-    const traitorChatOpen = view.phase === 'night' && view.conclaveOpen;
-    const canWrite = self.alive && (active === 'general' || traitorChatOpen);
 
-    // Por defecto los traidores ven su chat cuando abre el cónclave
-    useEffect(() => {
-        if (isTraitor && traitorChatOpen) setChannel('traitors');
-    }, [isTraitor, traitorChatOpen]);
+    const canWrite = {
+        general: !isDead || view.phase === 'gameover',
+        traitors: !isDead && traitorChatOpen,
+        dead: isDead
+    }[active];
+    const placeholder = canWrite ? 'Escribe un mensaje…'
+        : active === 'general' ? 'Has sido eliminado: habla en el chat de muertos'
+        : isDead ? 'Has sido eliminado'
+        : `El cónclave abre de ${view.conclaveHours}`;
 
+    // Cambiar automáticamente al chat relevante: cónclave para traidores, muertos al ser eliminado
     useEffect(() => {
+        if (isTraitor && traitorChatOpen && !isDead) setChannel('traitors');
+    }, [isTraitor, traitorChatOpen, isDead]);
+    useEffect(() => {
+        if (isDead) setChannel('dead');
+    }, [isDead]);
+
+    // Marcar como leídos los mensajes del canal abierto
+    useEffect(() => {
+        setSeen(s => ({ ...s, [active]: messages.length }));
         if (logRef.current) logRef.current.scrollTop = logRef.current.scrollHeight;
     }, [messages.length, active]);
 
@@ -351,13 +375,20 @@ function Chat({ me, self, view, chat }) {
 
     return (
         <div className="card">
-            {isTraitor ? (
+            {available.length > 1 ? (
                 <div className="tabs">
-                    <button className={`tab ${active === 'general' ? 'active' : ''}`} onClick={() => setChannel('general')}>General</button>
-                    <button className={`tab traitors ${active === 'traitors' ? 'active' : ''}`} onClick={() => setChannel('traitors')}>Traidores 🔒</button>
+                    {available.map(ch => {
+                        const unread = ch !== active ? (chat[ch] || []).length - (seen[ch] || 0) : 0;
+                        return (
+                            <button key={ch} className={`tab ${CHANNELS[ch].className} ${active === ch ? 'active' : ''}`} onClick={() => setChannel(ch)}>
+                                {CHANNELS[ch].label}{unread > 0 && <span className="unread">{unread}</span>}
+                            </button>
+                        );
+                    })}
                 </div>
             ) : <h3>Chat general</h3>}
-            <div className="chat-log" ref={logRef}>
+            {active === 'dead' && <p className="muted small">Solo los eliminados ven este chat.</p>}
+            <div className={`chat-log ${CHANNELS[active].className}`} ref={logRef}>
                 {messages.length === 0 && <p className="muted small center">No hay mensajes todavía.</p>}
                 {messages.map(m => (
                     <div key={m.id} className={`chat-msg ${m.fromId === me.playerId ? 'mine' : ''}`}>
@@ -367,14 +398,8 @@ function Chat({ me, self, view, chat }) {
                 ))}
             </div>
             <form className="row" onSubmit={send}>
-                <input
-                    value={message}
-                    maxLength={500}
-                    onChange={e => setMessage(e.target.value)}
-                    placeholder={canWrite ? 'Escribe un mensaje…' : (!self.alive ? 'Has sido eliminado' : `El cónclave abre de ${view.conclaveHours}`)}
-                    disabled={!canWrite}
-                />
-                <button className={`btn ${active === 'traitors' ? 'red' : ''}`} type="submit" disabled={!canWrite || !message.trim()}>Enviar</button>
+                <input value={message} maxLength={500} onChange={e => setMessage(e.target.value)} placeholder={placeholder} disabled={!canWrite} />
+                <button className={`btn ${CHANNELS[active].button || ''}`} type="submit" disabled={!canWrite || !message.trim()}>Enviar</button>
             </form>
         </div>
     );
@@ -407,7 +432,8 @@ function DeviceLink() {
     );
 }
 
-function GameOverScreen({ view, me }) {
+function GameOverScreen({ view, me, chat }) {
+    const self = view.players.find(p => p.id === me.playerId) || { alive: false };
     const winnersRole = view.winner === 'TRAIDORES' ? 'traidor' : 'fiel';
     const iWon = me.role === winnersRole;
     const ranking = [...view.players].sort((a, b) => b.score - a.score);
@@ -435,6 +461,7 @@ function GameOverScreen({ view, me }) {
                     ))}
                 </ul>
             </div>
+            <Chat me={me} self={self} view={view} chat={chat} />
         </div>
     );
 }

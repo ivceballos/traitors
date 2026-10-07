@@ -30,6 +30,7 @@ Juego web multijugador inspirado en el reality show "Traitors España".
 | 4 | Día → Mesa redonda → Fin del juego |
 
 - **Mesa redonda:** todos los vivos votan; se cierra sola cuando han votado todos (o la cierra el MC). En caso de empate no se destierra a nadie
+- **Chats:** general (todos los vivos), traidores (privado, solo durante el cónclave) y muertos (solo eliminados; los muertos pueden leer el general pero no escribir). Al terminar la partida todos pueden hablar en el general
 - **Cónclave nocturno:** las acciones y el chat secreto de los traidores solo están disponibles de 22:30 a 3:00 (hora de `GAME_TIMEZONE`, por defecto Madrid). El MC puede abrirlo fuera de horario
 - La invitación se bloquea si dejaría a los traidores igualados con los fieles (victoria automática)
 

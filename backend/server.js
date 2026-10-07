@@ -75,6 +75,7 @@ async function loadState() {
 // ---------- Difusión de estado ----------
 
 function broadcast() {
+    syncDeadChat();
     io.emit('state', game.publicView());
     game.state.players.forEach(p => io.to(p.id).emit('private', game.privateView(p.id)));
     io.to('master').emit('master-state', game.masterView());
@@ -85,8 +86,18 @@ function sendPrivateChat(socket, playerId) {
     const p = game.getPlayer(playerId);
     socket.emit('chat-history', {
         general: game.state.chat.general,
-        traitors: p && p.role === 'traidor' ? game.state.chat.traitors : []
+        traitors: p && p.role === 'traidor' ? game.state.chat.traitors : [],
+        dead: p && !p.alive ? game.state.chat.dead : []
     });
+}
+
+// Al morir, el jugador recibe en todos sus dispositivos el historial del chat de muertos
+let knownDead = new Set();
+function syncDeadChat() {
+    const dead = game.state.players.filter(p => !p.alive).map(p => p.id);
+    dead.filter(id => !knownDead.has(id)).forEach(id =>
+        io.in(id).fetchSockets().then(sockets => sockets.forEach(s => sendPrivateChat(s, id))));
+    knownDead = new Set(dead);
 }
 
 function signPlayerToken(playerId) {
@@ -193,6 +204,8 @@ io.on('connection', (socket) => {
         const msg = game.addChat(id, channel, message);
         if (msg.channel === 'traitors') {
             game.state.players.filter(p => p.role === 'traidor').forEach(p => io.to(p.id).emit('chat', msg));
+        } else if (msg.channel === 'dead') {
+            game.state.players.filter(p => !p.alive).forEach(p => io.to(p.id).emit('chat', msg));
         } else {
             io.emit('chat', msg);
         }

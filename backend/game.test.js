@@ -132,3 +132,20 @@ test('horario del cónclave 22:30-3:00 en hora de Madrid', () => {
     assert.strictEqual(isConclaveTime(new Date('2026-10-08T00:59:00Z')), true); // 2:59
     assert.strictEqual(isConclaveTime(new Date('2026-10-08T01:00:00Z')), false); // 3:00
 });
+
+test('chat de muertos: solo eliminados; los muertos no escriben en el general', () => {
+    const { g, faithfuls } = setup(6);
+    const deadId = faithfuls[0].id;
+    assert.throws(() => g.addChat(deadId, 'dead', 'hola'), /eliminados/);
+    g.getPlayer(deadId).alive = false;
+    assert.strictEqual(g.addChat(deadId, 'dead', 'desde el más allá').channel, 'dead');
+    assert.throws(() => g.addChat(deadId, 'general', 'hola'), /chat de muertos/);
+    assert.throws(() => g.addChat(faithfuls[1].id, 'dead', 'hola'), /eliminados/);
+    g.state.phase = 'gameover';
+    assert.strictEqual(g.addChat(deadId, 'general', 'bien jugado').channel, 'general');
+});
+
+test('partidas guardadas sin chat de muertos se cargan correctamente', () => {
+    const g = new Game({ phase: 'waiting', chat: { general: [], traitors: [] } });
+    assert.deepStrictEqual(g.state.chat.dead, []);
+});

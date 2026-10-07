@@ -24,7 +24,7 @@ function createInitialState() {
         invitation: { status: 'none', targetId: null, day: null },
         winner: null,
         activeTests: [],
-        chat: { general: [], traitors: [] },
+        chat: { general: [], traitors: [], dead: [] },
         ignoreConclaveHours: false
     };
 }
@@ -61,6 +61,7 @@ function conclaveHoursLabel() {
 class Game {
     constructor(state = createInitialState(), now = () => new Date()) {
         this.state = { ...createInitialState(), ...state };
+        this.state.chat = { ...createInitialState().chat, ...this.state.chat };
         this.now = now;
     }
 
@@ -348,14 +349,21 @@ class Game {
 
     addChat(playerId, channel, message) {
         const s = this.state;
-        const player = this.requireAlivePlayer(playerId);
+        const player = this.getPlayer(playerId);
+        if (!player) throw new GameError('Jugador no encontrado');
         const text = String(message || '').trim().slice(0, MAX_MESSAGE_LENGTH);
         if (!text) throw new GameError('Mensaje vacío');
-        if (channel === 'traitors') {
+        if (channel === 'dead') {
+            // Los eliminados tienen su propio chat, invisible para los vivos
+            if (player.alive) throw new GameError('Solo los eliminados pueden usar este chat');
+        } else if (channel === 'traitors') {
+            this.requireAlivePlayer(playerId);
             if (player.role !== 'traidor') throw new GameError('No tienes acceso a este chat');
             this.requireConclave();
         } else {
             channel = 'general';
+            // Los eliminados solo leen el chat general (al acabar la partida hablan todos)
+            if (!player.alive && s.phase !== 'gameover') throw new GameError('Has sido eliminado: usa el chat de muertos');
         }
         const msg = { id: uuidv4(), fromId: player.id, from: player.name, message: text, at: this.now().toISOString(), channel };
         const list = s.chat[channel];
