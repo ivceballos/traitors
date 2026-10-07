@@ -475,6 +475,7 @@ function RoleModal({ me, view, onClose }) {
                         </div>
                         <div className={`role-face back ${me.role} has-art`}>
                             <Art name={isTraitor ? 'punal.jpg' : 'farol.jpg'} />
+                            <span className="grow" />
                             <span className="small">Eres de los</span>
                             <span className="display">{isTraitor ? view.factions.traitor : view.factions.loyal}</span>
                             <span className="small">

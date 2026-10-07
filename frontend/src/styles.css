@@ -384,7 +384,13 @@ textarea.input { min-height: 96px; resize: vertical; line-height: 1.45; }
 .role-face .art { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; z-index: 0; border-radius: var(--radius); }
 .role-face > :not(.art) { position: relative; z-index: 1; }
 .role-face.back.traitor .art + * , .role-face.back.loyal .art + * { text-shadow: 0 2px 12px rgba(0,0,0,0.7); }
-.role-face.has-art::after { content: ''; position: absolute; inset: 0; z-index: 0; background: linear-gradient(180deg, rgba(0,0,0,0.25), rgba(0,0,0,0.05) 40%, rgba(0,0,0,0.75)); border-radius: var(--radius); }
+.role-face.has-art::after { content: ''; position: absolute; inset: 0; z-index: 0; background: linear-gradient(180deg, transparent 45%, rgba(4, 7, 12, 0.7) 68%, rgba(4, 7, 12, 0.95)); border-radius: var(--radius); }
+/* Con ilustración: texto claro agrupado abajo, sobre el degradado */
+.role-face.back.has-art { justify-content: flex-end; gap: 6px; color: var(--text); background: var(--bg); }
+.role-face.back.has-art .display { font-size: 3.6rem; text-shadow: 0 2px 16px rgba(0, 0, 0, 0.9); }
+.role-face.back.traitor.has-art .display { color: var(--accent); }
+.role-face.back.loyal.has-art .display { color: var(--gold); }
+.role-face.back.has-art .grow { display: none; }
 .ghost-art { width: 100%; max-height: 220px; object-fit: cover; -webkit-mask-image: linear-gradient(180deg, transparent, #000 25%, #000 70%, transparent); mask-image: linear-gradient(180deg, transparent, #000 25%, #000 70%, transparent); }
 
 /* Logo dorado: un halo cálido, como si lo iluminara una antorcha */
@@ -398,3 +404,6 @@ h1, h2, .display, .tv-title, .tv-phase, .tv-code { text-shadow: 0 1px 0 rgba(0, 
 .atmosphere .castle { transition: opacity .6s var(--ease); }
 .atmosphere.dim .castle { opacity: 0.4; }
 .atmosphere.dim .torch { opacity: 0.6; }
+/* Fondo de reserva si aún no está la ilustración */
+.role-face.back.traitor.has-art { background: radial-gradient(120% 80% at 50% 25%, #5a161b 0%, #1a0a0d 55%, var(--bg) 100%); }
+.role-face.back.loyal.has-art { background: radial-gradient(120% 80% at 50% 25%, #1e2c44 0%, #0b1220 55%, var(--bg) 100%); }
