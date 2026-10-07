@@ -41,6 +41,12 @@ Web app del juego de traición «Fieles y Felones» (inspirado en *Traitors*) pa
   - Jugadores de prueba (bots) desde la sala de espera.
 - En `localhost` la app ignora `config.js` y usa siempre el servidor local.
 
+### Actualizar el NAS (comprobado el 7/10/2026)
+1. Zip del último commit **sin `docker-compose.yml`** (el del NAS lleva las claves pegadas): `git archive --prefix=fieles-y-felones/` y quitar el compose del zip.
+2. File Station → `docker` → subir el zip → Extraer… → Opciones → **Sobrescribir** → Extraer todo (el gestor de contraseñas de Iván bloquea los clics automáticos en este diálogo).
+3. Container Manager → Proyecto `fieles-y-felones` → Detener → Acción → **Limpiar** → Imagen `fieles-y-felones-juego` → Eliminar → Proyecto → Acción → **Crear**. Sin borrar la imagen, «Crear» reutiliza la antigua y no recompila.
+4. Render: Manual Deploy → Deploy latest commit (está conectado como repositorio público, no se despliega solo).
+
 ## En curso: despliegue con NAS principal y Render de reserva
 
 El hosting de Iván (DirectAdmin en srv122.tamainut.net, dominio a-mas-s.es) **solo ejecuta PHP**: no sirve para el servidor, pero sí para alojar la web estática. Tiene un **Synology DS220+** (Intel, Container Manager).
