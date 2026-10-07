@@ -1,7 +1,7 @@
 # NAS (Synology Container Manager → Proyecto). Las claves van en un archivo .env
 # junto a este (ver .env.nas.example); nunca en el repositorio.
 # Se publica con el túnel de Cloudflare que ya corre en el NAS:
-# fyf-nas.ivceballos.com → http://192.168.1.186:4000
+# fyf-nas.ivceballos.com → http://192.168.1.33:4000
 services:
   juego:
     build: .

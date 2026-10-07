@@ -67,7 +67,7 @@ Despliegue:
 ### Pendiente
 
 1. **Iván:** crear las cuentas de MongoDB Atlas (M0, Network Access 0.0.0.0/0) y Render (New → Blueprint, esta rama).
-2. **Cloudflare:** en el túnel que ya existe, añadir el nombre público `fyf-nas.ivceballos.com` → `http://192.168.1.186:4000`.
+2. **Cloudflare:** en el túnel que ya existe, añadir el nombre público `fyf-nas.ivceballos.com` → `http://192.168.1.33:4000`.
 3. **NAS:** subir el repo a una carpeta compartida, crear el `.env` y montar el proyecto en Container Manager.
 4. **Hosting:** subir `frontend/build/` (o elegir dominio para la web).
 5. **Ensayo:** una hora con 5 o 6 móviles, el MC a distancia y la tele. Apagar el NAS a propósito a mitad de partida.
