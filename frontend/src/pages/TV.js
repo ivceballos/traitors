@@ -46,7 +46,7 @@ export default function TV() {
                     <img className="logo" src={`${process.env.PUBLIC_URL}/img/logo.webp`} alt="" style={{ width: '11vmin', height: '11vmin' }} />
                     <div className="tv-title">{view.name}</div>
                 </div>
-                <div className={`tv-phase ${view.phase}`}>
+                <div className={`tv-phase ${view.phase} ${view.winner || ''}`}>
                     {view.phase === 'end' && <Seal kind={view.winner} size={160} className="tv-seal" />}
                     {view.phase === 'end' ? `Ganan los ${winners}` : title}
                     {(view.phase === 'roundtable' || view.phase === 'night') && <div className="label" style={{ marginTop: '1vmin' }}>Día {view.day} de {view.days}</div>}

@@ -699,7 +699,7 @@ function EndScreen({ view, me, chat, self, act }) {
     return (
         <div className="page stack">
             <header className="phase end" style={{ paddingTop: 32 }}>
-                <span className="display" style={{ color: view.winner === 'traitor' ? 'var(--accent)' : 'var(--gold)' }}>Ganan los {winners}</span>
+                <span className="display" style={{ color: view.winner === 'traitor' ? 'var(--accent)' : 'var(--text)' }}>Ganan los {winners}</span>
                 <Seal kind={view.winner} size={96} className="phase-icon" />
                 <p className="phase-text m0">{iWon ? 'Has ganado.' : 'Has perdido.'} {view.name} ha terminado.</p>
             </header>
