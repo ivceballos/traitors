@@ -798,6 +798,17 @@ class Game {
         return p;
     }
 
+    // Terminar ya, en cualquier fase: ganan los Felones si queda alguno vivo, como al final
+    endNow() {
+        const s = this.state;
+        if (s.phase === 'lobby' || s.phase === 'end') throw new GameError('No hay ninguna partida en marcha');
+        s.round = null;
+        s.endgame = null;
+        s.endgameRound = false;
+        this.log('forced-end', 'Se da por terminada la partida');
+        this.finish();
+    }
+
     // ----- Panel completo del MC -----
     // Si la partida se atasca, el MC puede pedir ver roles, cónclave y Fantasmas. Solo se abre si
     // lo aprueban todos los vivos; basta un «no» para cancelarlo.

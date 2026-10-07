@@ -224,6 +224,13 @@ function GameTab({ s, act, showRoles }) {
                     </ActionButton>
                 ))}
 
+            {['day', 'roundtable', 'night', 'endgame'].includes(s.phase) && (
+                <HoldButton className="block" hint="Mantén pulsado: termina la partida ya y se revela todo. Ganan los Felones si queda alguno vivo."
+                    onConfirm={() => act('mc:end', {}, 'Partida terminada')}>
+                    Finalizar partida
+                </HoldButton>
+            )}
+
             {s.phase === 'lobby' && (
                 <div className="stack-sm">
                     <ActionButton className="block" onClick={() => act('mc:add-bots', { count: 6 })}>Añadir 6 jugadores de prueba</ActionButton>

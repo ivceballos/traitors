@@ -735,6 +735,10 @@ function OrganizerPanel({ view, me, self, act, code }) {
                             ? <Link className="btn primary" to={`/mc/${code}`}>Abrir el panel completo</Link>
                             : view.unlock?.status === 'none' && <ActionButton onClick={() => act('org:request-unlock')}>Pedir ver todo</ActionButton>}
                     </div>
+                    {fullAccess && (
+                        <HoldButton className="block" hint="Mantén pulsado: termina la partida ya y se revela todo"
+                            onConfirm={() => act('org:end')}>Finalizar partida</HoldButton>
+                    )}
                 </>
             )}
         </section>

@@ -173,6 +173,15 @@ test('sin MC: el organizador juega; la prueba sale sola y da escudo; si le elimi
     assert.strictEqual(g.fullAccess(), true, 'el organizador eliminado ve el panel completo');
 });
 
+test('finalizar partida: en cualquier fase, con el ganador que toque', () => {
+    const { g } = setup(8);
+    g.advance(); // noche
+    g.endNow();
+    assert.strictEqual(g.state.phase, 'end');
+    assert.strictEqual(g.state.winner, 'traitor', 'quedan Felones vivos');
+    assert.throws(() => g.endNow(), GameError);
+});
+
 test('modo online: sin Fantasmas', () => {
     assert.strictEqual(normalizeConfig({ mode: 'online' }).ghosts.enabled, false);
     assert.strictEqual(normalizeConfig({ mode: 'presencial' }).ghosts.enabled, true);

@@ -509,6 +509,12 @@ io.on('connection', (socket) => {
         game.requestUnlock();
         io.to(pubRoom(room.code)).emit('notice', 'Quien organiza pide abrir el panel completo: apruébalo o recházalo en tu móvil');
     });
+    // Sin MC, terminar a mano podría dar la victoria a un organizador Felón: solo si ya no juega
+    // (eliminado) o si todos le han abierto el panel completo
+    organizer('org:end', ({ game }) => {
+        if (!game.fullAccess()) throw new GameError('Solo si te han eliminado o si todos te abren el panel completo');
+        game.endNow();
+    });
     organizer('org:restart', ({ room, game }) => {
         if (game.state.phase !== 'end') throw new GameError('Solo al terminar la partida');
         game.restart();
@@ -531,6 +537,7 @@ io.on('connection', (socket) => {
         return result;
     });
 
+    master('mc:end', ({ game }) => game.endNow());
     master('mc:advance', ({ room, game }) => {
         const before = game.state.phase;
         game.advance();
