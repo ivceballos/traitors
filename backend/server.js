@@ -175,6 +175,20 @@ function broadcast(room, { save = true } = {}) {
     });
     room.knownDead = new Set(game.dead().map(p => p.id));
     if (save) persist(room);
+    scheduleBots(room);
+}
+
+// Jugadores de prueba: juegan un momento después de cada cambio, como si pensaran
+function scheduleBots(room) {
+    if (room.botTimer || !room.game.state.players.some(p => p.bot && p.alive)) return;
+    room.botTimer = setTimeout(() => {
+        room.botTimer = null;
+        try {
+            if (room.game.botMoves()) broadcast(room);
+        } catch (err) {
+            console.error(`Sala ${room.code}: error en los bots`, err.message);
+        }
+    }, 1500);
 }
 
 // Tras recargar una versión de otro servidor: estado y chats nuevos para todos, sin volver a guardar
@@ -409,6 +423,7 @@ io.on('connection', (socket) => {
     master('mc:night-victims', ({ game }, { ids }) => game.setNightVictims(ids));
     master('mc:conclave-override', ({ game }, { value }) => { game.state.conclaveOverride = !!value; });
     master('mc:config', ({ game }, { config }) => game.updateConfig(config || {}));
+    master('mc:add-bots', ({ game }, { count }) => { game.addBots(Math.min(20, Math.max(1, parseInt(count, 10) || 6))); });
     master('mc:kick', ({ room, game }, { playerId }) => {
         game.removePlayer(playerId);
         io.to(playerRoom(room.code, playerId)).emit('kicked');

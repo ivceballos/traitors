@@ -9,6 +9,8 @@ const MAX_CHAT_HISTORY = 300;
 const MAX_MESSAGE_LENGTH = 500;
 const MAX_REVOTES = 3;
 const MIN_PLAYERS = 4;
+const BOT_NAMES = ['Ana', 'Bruno', 'Carla', 'Diego', 'Elena', 'Fran', 'Gala', 'Hugo', 'Inés', 'Javi', 'Lola', 'Marco',
+    'Nuria', 'Óscar', 'Paula', 'Quique', 'Rosa', 'Sergio', 'Tere', 'Unai', 'Vera', 'Xavi', 'Yago', 'Zoe'];
 
 // ---------- Configuración ----------
 
@@ -300,6 +302,71 @@ class Game {
         };
         this.state.players.push(player);
         return player;
+    }
+
+    // ----- Jugadores de prueba -----
+    // Bots para probar la partida sin reunir a nadie: se apuntan en la sala de espera y luego
+    // juegan solos al azar (votan, señalan, los traidores matan, responden al reclutamiento).
+
+    addBots(count) {
+        this.requirePhase('lobby');
+        const added = [];
+        for (const base of BOT_NAMES) {
+            if (added.length >= count || this.state.players.length >= 40) break;
+            const name = `🤖 ${base}`;
+            if (this.state.players.some(p => p.name === name)) continue;
+            const p = this.addPlayer({ name });
+            p.bot = true;
+            added.push(p);
+        }
+        if (added.length === 0) throw new GameError('No caben más jugadores de prueba');
+        return added;
+    }
+
+    // Hace las jugadas pendientes de los bots. Devuelve true si ha cambiado algo.
+    botMoves() {
+        const s = this.state;
+        const pick = list => list[Math.floor(this.random() * list.length)];
+        const bots = () => this.alive().filter(p => p.bot);
+        let changed = false;
+
+        if (s.phase === 'roundtable' && this.config.voting === 'app') {
+            for (const b of bots()) {
+                const round = this.state.round;
+                if (!round || this.state.phase !== 'roundtable' || round.votes[b.id] || !b.alive) continue;
+                const options = (round.candidates || this.alive().map(p => p.id))
+                    .filter(id => id !== b.id && this.getPlayer(id)?.alive);
+                if (options.length === 0) continue;
+                this.vote(b.id, pick(options));
+                changed = true;
+            }
+        }
+
+        if (s.phase === 'night') {
+            bots().forEach(b => {
+                if (s.suspicions[b.id]) return;
+                const options = this.alive().filter(p => p.id !== b.id);
+                if (options.length) { s.suspicions[b.id] = pick(options).id; changed = true; }
+            });
+            const kills = this.today().conclave;
+            if (kills > 0 && this.conclaveOpen()) {
+                bots().filter(b => b.role === 'traitor' && !s.nightVotes[b.id]).forEach(b => {
+                    const loyals = this.aliveLoyals().map(p => p.id);
+                    const victims = [];
+                    while (victims.length < Math.min(kills, loyals.length)) {
+                        const id = pick(loyals);
+                        if (!victims.includes(id)) victims.push(id);
+                    }
+                    if (victims.length) { this.nightVote(b.id, victims); changed = true; }
+                });
+            }
+            const inv = s.invitation;
+            if (inv.status === 'pending' && this.getPlayer(inv.targetId)?.bot) {
+                this.respondInvitation(inv.targetId, this.random() < 0.5);
+                changed = true;
+            }
+        }
+        return changed;
     }
 
     validatePhoto(photo) {

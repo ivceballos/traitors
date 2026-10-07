@@ -207,6 +207,13 @@ function GameTab({ s, act, showRoles }) {
                     </ActionButton>
                 ))}
 
+            {s.phase === 'lobby' && (
+                <div className="stack-sm">
+                    <ActionButton className="block" onClick={() => act('mc:add-bots', { count: 6 })}>Añadir 6 jugadores de prueba</ActionButton>
+                    <p className="muted tiny m0 center">Para probar sin gente: los 🤖 votan, señalan y matan solos al azar. Únete tú también desde otro móvil o pestaña para ver la partida como jugador.</p>
+                </div>
+            )}
+
             {s.events.length > 0 && (
                 <section className="section">
                     <h3>Registro</h3>

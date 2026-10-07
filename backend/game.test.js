@@ -326,3 +326,24 @@ test('pruebas en la tele: el MC lanza una prueba y se marca en juego', () => {
     g.setSpotlight(null);
     assert.strictEqual(g.publicView('X').spotlight, null);
 });
+
+test('bots: una partida entera jugada solo por jugadores de prueba', () => {
+    for (let seed = 1; seed <= 20; seed++) {
+        let x = seed;
+        const rnd = () => { x = (x * 16807) % 2147483647; return x / 2147483647; };
+        const g = new Game(createState({ days: 4 }), () => new Date(), rnd);
+        assert.strictEqual(g.addBots(12).length, 12);
+        assert.ok(g.state.players.every(p => p.bot && p.name.startsWith('🤖')));
+        g.advance(); // empieza
+        for (let step = 0; step < 200 && g.state.phase !== 'end'; step++) {
+            if (!g.botMoves()) g.advance(); // si los bots no tienen nada que hacer, el MC avanza
+        }
+        assert.strictEqual(g.state.phase, 'end', `semilla ${seed}: la partida termina`);
+        assert.ok(['loyal', 'traitor'].includes(g.state.winner));
+    }
+});
+
+test('bots: no se pueden añadir con la partida empezada', () => {
+    const { g } = setup(6);
+    assert.throws(() => g.addBots(3), GameError);
+});

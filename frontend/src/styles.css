@@ -124,6 +124,14 @@ h3 { font-family: var(--font); font-size: 1rem; font-weight: 600; margin: 0 0 12
     --btn-filete: rgba(255, 240, 200, 0.35);
 }
 .btn.primary:hover:not(:disabled) { filter: brightness(1.06); }
+/* Prueba: el pan de oro de los sellos de lacre (más cálido, con grano de estampado) */
+.btn.primary.leaf {
+    --btn-bg:
+        url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='1.1' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 0.35 0 0 0 0 0.22 0 0 0 0 0.05 0 0 0 0.55 0'/%3E%3C/filter%3E%3Crect width='120' height='120' filter='url(%23n)'/%3E%3C/svg%3E"),
+        linear-gradient(180deg, #fad17f 0%, #dbb25e 30%, #d0a34a 60%, #b3862d 100%);
+    --btn-line: #8f6526; --btn-line-hover: #8f6526;
+    --btn-filete: rgba(255, 236, 190, 0.45);
+}
 .btn.danger {
     --btn-bg: linear-gradient(180deg, #a8323a 0%, #9e2c32 50%, #8a252b 100%);
     --btn-fg: var(--text); --btn-line: #6e1d22; --btn-line-hover: #6e1d22;
