@@ -20,10 +20,17 @@ const img = name => `${process.env.PUBLIC_URL}/img/${name}`;
 
 // Sello de cada bando (y de los Fantasmas): lacre rojo con el grabado en dorado. Los tres
 // comparten color a propósito, para que nadie distinga el bando mirando de reojo una pantalla;
-// solo cambia el dibujo (farol, puñal, calavera).
+// solo cambia el dibujo (farol, puñal, calavera). Desde 48 px se usa el lacre fotográfico; por
+// debajo, el grabado plano sobre un lacre dibujado, porque el detalle de la foto no se lee.
+const SEAL_NAMES = { traitor: 'felones', loyal: 'fieles', ghost: 'fantasmas' };
+
 export function Seal({ kind, size = 48, className = '' }) {
-    const file = { traitor: 'sello-felones.webp', loyal: 'sello-fieles.webp', ghost: 'sello-fantasmas.webp' }[kind];
-    if (!file) return null;
+    const name = SEAL_NAMES[kind];
+    if (!name) return null;
+    if (size >= 48) {
+        return <img className={`seal seal-photo ${className}`} src={img(`lacre-${name}.webp`)} alt="" width={size} height={size} style={{ width: size, height: size }} />;
+    }
+    const file = `sello-${name}.webp`;
     return (
         <span
             className={`seal ${className}`}
