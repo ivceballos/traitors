@@ -1,0 +1,24 @@
+# NAS (Synology Container Manager → Proyecto). Las claves van en un archivo .env
+# junto a este (ver .env.nas.example); nunca en el repositorio.
+services:
+  juego:
+    build: .
+    restart: unless-stopped
+    environment:
+      MONGODB_URI: ${MONGODB_URI}
+      JWT_SECRET: ${JWT_SECRET}
+      KEEPALIVE_URL: https://fieles-y-felones.onrender.com/health
+      PORT: 4000
+    ports:
+      - "4000:4000"
+
+  # Cloudflare Tunnel: publica el juego en fyf-nas.ivceballos.com sin abrir puertos
+  # en el router. El token sale de Cloudflare Zero Trust → Networks → Tunnels.
+  tunel:
+    image: cloudflare/cloudflared:latest
+    restart: unless-stopped
+    command: tunnel --no-autoupdate run
+    environment:
+      TUNNEL_TOKEN: ${TUNNEL_TOKEN}
+    depends_on:
+      - juego

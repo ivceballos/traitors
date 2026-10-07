@@ -10,7 +10,8 @@ services:
     envVars:
       - key: NODE_VERSION
         value: "20"
+      # Tiene que ser la misma que en el NAS, o las sesiones no valdrán en los dos
       - key: JWT_SECRET
-        generateValue: true
+        sync: false
       - key: MONGODB_URI
         sync: false

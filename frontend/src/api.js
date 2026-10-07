@@ -1,13 +1,37 @@
 import { io } from 'socket.io-client';
 
-// En desarrollo el backend corre en el puerto 4000 de la misma máquina (el hostname
-// actual permite probar desde el móvil en la misma red). En producción, mismo origen.
-export const SERVER_URL = process.env.REACT_APP_SERVER_URL ||
-    (process.env.NODE_ENV === 'development'
-        ? `${window.location.protocol}//${window.location.hostname}:4000`
-        : window.location.origin);
+// Servidores por orden de preferencia. public/config.js puede dar una lista
+// (NAS principal y Render de reserva); si está vacía, se usa el de siempre:
+// en desarrollo el puerto 4000 de la misma máquina (el hostname actual permite
+// probar desde el móvil en la misma red) y en producción el mismo origen.
+const configured = (window.FF_SERVERS || []).filter(Boolean).map(s => s.replace(/\/+$/, ''));
+const SERVERS = process.env.REACT_APP_SERVER_URL
+    ? [process.env.REACT_APP_SERVER_URL]
+    : configured.length
+        ? configured
+        : [process.env.NODE_ENV === 'development'
+            ? `${window.location.protocol}//${window.location.hostname}:4000`
+            : window.location.origin];
 
-export const socket = io(SERVER_URL, { autoConnect: true });
+let current = 0;
+export const serverUrl = () => SERVERS[current];
+
+export const socket = io(SERVERS[0], { autoConnect: true });
+
+// Si el servidor actual no responde, pasar al siguiente. Comparten la base de datos,
+// así que la partida sigue igual; el Manager reabre la conexión con la nueva URI.
+function nextServer() {
+    if (SERVERS.length < 2) return false;
+    current = (current + 1) % SERVERS.length;
+    socket.io.uri = SERVERS[current];
+    return true;
+}
+
+let failures = 0;
+socket.on('connect', () => { failures = 0; });
+socket.on('connect_error', () => {
+    if (++failures >= 2 && nextServer()) failures = 0;
+});
 
 // Emite un evento y espera la respuesta del servidor
 export function send(event, payload = {}) {
@@ -21,17 +45,26 @@ export function send(event, payload = {}) {
 }
 
 export async function http(path, options = {}) {
-    const res = await fetch(SERVER_URL + path, {
-        ...options,
-        headers: { 'Content-Type': 'application/json', ...(options.headers || {}) },
-        body: options.body ? JSON.stringify(options.body) : undefined
-    });
+    let res;
+    // Un fallo de red prueba los demás servidores; un error del servidor no
+    for (let tries = 0; ; tries++) {
+        try {
+            res = await fetch(serverUrl() + path, {
+                ...options,
+                headers: { 'Content-Type': 'application/json', ...(options.headers || {}) },
+                body: options.body ? JSON.stringify(options.body) : undefined
+            });
+            break;
+        } catch (err) {
+            if (tries + 1 >= SERVERS.length || !nextServer()) throw new Error('El servidor no responde');
+        }
+    }
     const data = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(data.error || 'Error de conexión');
     return data;
 }
 
-export const photoSrc = url => (url ? SERVER_URL + url : null);
+export const photoSrc = url => (url ? serverUrl() + url : null);
 
 export const storage = {
     get(key) {

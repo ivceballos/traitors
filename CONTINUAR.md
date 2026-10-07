@@ -18,7 +18,7 @@ Web app del juego de traición «Fieles y Felones» (inspirado en *Traitors*) pa
 - Estética: castillo nocturno azulado, antorchas y encapuchados. Títulos en IM Fell English, texto en Geist.
 - Colores: rojo para los Felones y lo irreversible, marfil para los Fieles, dorado para la marca y el oro.
 - Logo F&F dorado con la serpiente como «&». Las imágenes están en la carpeta de Drive «FIELES Y FELONES» (`D:\TRABAJO\FIELES Y FELONES`).
-- Sociedad Secreta de los Fantasmas: la conocen solo los muertos y se revela al final.
+- Sociedad Secreta de los Fantasmas: la conocen solo los muertos y se revela al final. Su objetivo puede ser de cualquier bando, como propuso el concilio (decidido el 7/10/2026).
 
 ## Hecho (todo subido)
 
@@ -44,7 +44,7 @@ web estática en el hosting PHP (p. ej. juego.a-mas-s.es)
         └──── MongoDB Atlas M0 (partida compartida) ────┘
 ```
 
-### Hecho en esta parte (sin probar con base de datos real)
+### Hecho en esta parte (probado con MongoDB real el 7/10/2026)
 
 `backend/server.js`:
 - Cada documento de sala lleva `rev`. `persist()` solo escribe si `rev` coincide. Si hay conflicto, recarga la versión del otro servidor y la reenvía (`refresh`).
@@ -52,28 +52,25 @@ web estática en el hosting PHP (p. ej. juego.a-mas-s.es)
 - Cada 3 s, las salas con alguien conectado comprueban si otro servidor ha guardado y reenvían los cambios.
 - `KEEPALIVE_URL`: el NAS llama a Render cada 10 min para que no se duerma.
 
-Sin `MONGODB_URI` todo funciona como antes (comprobado: tests y partida simulada de 12 jugadores).
+Sin `MONGODB_URI` todo funciona como antes (comprobado: tests y partida simulada de 12 jugadores). Con MongoDB real y dos servidores: la sala creada en uno se juega en el otro, una sesión de A vale en B, al apagar A el MC y los jugadores siguen en B, y cuando A vuelve trae lo que pasó mientras estaba caído.
+
+Frontend:
+- `frontend/public/config.js` define `window.FF_SERVERS` (NAS primero y Render después). Se carga antes del bundle y se puede editar en el hosting sin recompilar. Vacío = mismo origen.
+- `frontend/src/api.js`: tras 2 fallos de conexión cambia al siguiente servidor (`socket.io.uri`). `http()` prueba los demás servidores si hay fallo de red, y `photoSrc` usa el servidor actual.
+- `frontend/public/.htaccess` para el hosting PHP (rutas de React y `config.js` sin caché). CRA lo copia a `build/`.
+
+Despliegue:
+- `render.yaml`: `JWT_SECRET` con `sync: false`; hay que poner **la misma** que en el NAS.
+- `Dockerfile` multietapa y `docker-compose.yml` con el juego y un contenedor de **Cloudflare Tunnel** (sin abrir puertos en el router). Claves en `.env` según `.env.nas.example`.
+- Dominio del NAS: `fyf-nas.ivceballos.com` (Cloudflare). NAS en `https://ivceballos.quickconnect.to/`.
 
 ### Pendiente
 
-1. **Probar la sincronización con MongoDB real.** Dos servidores en puertos distintos con la misma `MONGODB_URI`: crear la sala en uno, jugar en el otro, apagar uno a mitad de partida.
-2. **Frontend con servidor de reserva:**
-   - `frontend/public/config.js` con `window.FF_SERVERS = ['https://nas…', 'https://fieles-y-felones.onrender.com']`, cargado en `index.html` antes del bundle. Si la lista está vacía, se usa el mismo origen (comportamiento actual).
-   - En `frontend/src/api.js`, tras 2 fallos de conexión, cambiar al siguiente servidor con `socket.io.uri = siguiente` (el Manager vuelve a abrir con la nueva URI). `http()` y `photoSrc` deben usar el servidor actual, no una constante.
-   - `frontend/public/.htaccess` para que el hosting PHP sirva `index.html` en las rutas `/p/…`, `/mc/…` y `/tv/…`. Comprobar que CRA lo copia a `build/`.
-3. **`render.yaml`:** `JWT_SECRET` pasa a `sync: false`, porque tiene que ser **el mismo** en el NAS y en Render; si no, las sesiones no valen en los dos.
-4. **NAS:** `Dockerfile` multietapa (compila el frontend y luego el backend) y `docker-compose.yml` con `MONGODB_URI`, `JWT_SECRET`, `KEEPALIVE_URL` y `PORT=4000`. Guía para el DS220+:
-   - Container Manager → Proyecto (desde la carpeta del repo).
-   - DDNS de Synology (`xxx.synology.me`) con certificado de Let's Encrypt.
-   - Proxy inverso: HTTPS 443 → `http://localhost:4000`, con las cabeceras personalizadas de WebSocket.
-   - Abrir el puerto 443 en el router hacia el NAS.
-   - Ojo: si la operadora usa CG-NAT no se pueden abrir puertos. La alternativa es un contenedor de Cloudflare Tunnel.
-5. **Iván:** crear la cuenta de MongoDB Atlas (M0, Network Access 0.0.0.0/0) y la de Render (New → Blueprint, rama de trabajo).
-6. **Ensayo:** una hora con 5 o 6 móviles, el MC a distancia y la tele. Apagar el NAS a propósito a mitad de partida.
-
-### Pregunta abierta
-
-El objetivo de los Fantasmas ahora puede ser de cualquier bando (lo recomendó el concilio). En el juego original era siempre un fiel. Iván tiene que confirmar cuál quiere.
+1. **Iván:** crear las cuentas de MongoDB Atlas (M0, Network Access 0.0.0.0/0) y Render (New → Blueprint, esta rama).
+2. **Cloudflare:** crear el túnel `fyf-nas` → `http://juego:4000` con el nombre `fyf-nas.ivceballos.com` y copiar su token al `.env` del NAS.
+3. **NAS:** subir el repo a una carpeta compartida, crear el `.env` y montar el proyecto en Container Manager.
+4. **Hosting:** subir `frontend/build/` (o elegir dominio para la web).
+5. **Ensayo:** una hora con 5 o 6 móviles, el MC a distancia y la tele. Apagar el NAS a propósito a mitad de partida.
 
 ## Desarrollo en local
 

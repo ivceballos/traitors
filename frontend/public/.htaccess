@@ -1,0 +1,10 @@
+# Hosting PHP (Apache): las rutas /p/…, /mc/… y /tv/… las resuelve React
+RewriteEngine On
+RewriteCond %{REQUEST_FILENAME} !-f
+RewriteCond %{REQUEST_FILENAME} !-d
+RewriteRule ^ index.html [L]
+
+# config.js dice a qué servidores conectarse: que no se quede en caché
+<Files "config.js">
+    Header set Cache-Control "no-cache"
+</Files>
