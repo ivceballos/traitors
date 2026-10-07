@@ -57,7 +57,7 @@ test('calendario Fieles y Felones: 12 → 10 → 6 → 5', () => {
     const victims = [...loyals];
     // Día 2: 1 mesa + 1 cónclave
     g.advance();
-    g.banish(victims.shift().id, { targetVotes: 0 });
+    g.banish(victims.shift().id);
     assert.strictEqual(g.state.round, null, 'solo una votación el día 2');
     g.advance(); // noche
     g.setNightVictims([victims.shift().id]);
@@ -65,16 +65,16 @@ test('calendario Fieles y Felones: 12 → 10 → 6 → 5', () => {
     assert.strictEqual(g.alive().length, 10);
     // Día 3: 2 mesas + 2 cónclave
     g.advance();
-    g.banish(victims.shift().id, { targetVotes: 0 });
+    g.banish(victims.shift().id);
     assert.ok(g.state.round, 'segunda votación abierta automáticamente');
-    g.banish(victims.shift().id, { targetVotes: 0 });
+    g.banish(victims.shift().id);
     g.advance();
     g.setNightVictims([victims.shift().id, victims.shift().id]);
     g.advance();
     assert.strictEqual(g.alive().length, 6);
     // Día 4: 1 mesa y final
     g.advance();
-    g.banish(victims.shift().id, { targetVotes: 0 });
+    g.banish(victims.shift().id);
     g.advance();
     assert.strictEqual(g.state.phase, 'endgame', 'tras el último día llega el final');
     g.decideEndgame('end'); // en persona: el MC registra que deciden acabar
@@ -210,16 +210,21 @@ test('Fantasmas: objetivo vivo de cualquier bando, 1 calavera por voto y +2 si c
     assert.strictEqual(g.state.ghosts.skulls, voters * 1 + 2);
 });
 
-test('Fantasmas: en persona el MC indica los votos al objetivo', () => {
+test('Fantasmas: en persona los apuntan los propios Fantasmas (el MC no sabe nada)', () => {
     const { g } = setup(10, { voting: 'inperson' });
     g.advance(); g.advance(); g.advance();
-    g.banish(g.aliveLoyals()[0].id);
+    const firstDead = g.aliveLoyals()[0];
+    g.banish(firstDead.id);
     g.advance(); g.advance(); g.advance();
     const target = g.state.ghosts.today.targetId;
     const other = g.aliveLoyals().find(p => p.id !== target).id;
-    assert.throws(() => g.banish(other), /cuántos votos/);
-    g.banish(other, { targetVotes: 4 });
+    g.banish(other); // el MC destierra sin saber nada del objetivo
+    assert.throws(() => g.ghostReport(g.alive()[0].id, 4), GameError, 'un vivo no puede');
+    g.ghostReport(firstDead.id, 4);
     assert.strictEqual(g.state.ghosts.skulls, 4);
+    assert.throws(() => g.ghostReport(firstDead.id, 2), /Ya se han apuntado/);
+    assert.strictEqual(g.masterView('TEST').ghosts, undefined, 'el MC no ve a los Fantasmas');
+    assert.strictEqual(g.masterView('TEST').roles, undefined, 'ni los roles');
 });
 
 test('Fantasmas: los desempates y «no sale nadie» no vuelven a puntuar', () => {
@@ -258,7 +263,7 @@ test('noche: todos señalan sospechoso y el MC ve el recuento', () => {
     assert.ok(!g.state.events.some(e => e.type === 'nomurder'));
 });
 
-test('Fantasmas: el secreto solo lo ven los muertos y el MC hasta el final', () => {
+test('Fantasmas: el secreto solo lo ven los muertos hasta el final (ni el MC)', () => {
     const manual = { auto: false, thresholds: [{ skulls: 18, percent: 50 }, { skulls: 26, percent: 75 }, { skulls: 33, percent: 100 }] };
     const { g, loyals } = setup(10, { ghosts: manual }, [{ name: 'X', max: 0 }]);
     g.updateTest(g.state.tests[0].id, { score: 10000 });
@@ -268,7 +273,7 @@ test('Fantasmas: el secreto solo lo ven los muertos y el MC hasta el final', () 
     assert.strictEqual(g.publicView('X').ghosts, undefined);
     assert.strictEqual(g.privateView(loyals[1].id).ghostSociety, undefined);
     assert.strictEqual(g.privateView(loyals[0].id).ghostSociety.percent, 75);
-    assert.ok(g.masterView('X').ghosts.target);
+    assert.strictEqual(g.masterView('X').ghosts, undefined);
     g.finish();
     assert.strictEqual(g.publicView('X').ghosts.stolen, 7500);
 });

@@ -127,6 +127,52 @@ test('entrevista: solo preguntas de la lista, sin repetir y como mucho tres', ()
     assert.deepStrictEqual(p.answers.map(x => x.a), ['Uno', 'Dos', 'Tres']);
 });
 
+test('MC a ciegas: sin roles ni cónclave; panel completo solo si aprueban todos los vivos', () => {
+    const { g, traitors } = setup(6);
+    g.advance(); // noche 1
+    g.state.config.schedule[0].conclave = 1;
+    g.nightVote(traitors[0].id, [g.aliveLoyals()[0].id]);
+    let mv = g.masterView('X');
+    assert.strictEqual(mv.roles, undefined);
+    assert.strictEqual(mv.nightVotes, undefined, 'no sabe qué Felón eligió');
+    assert.strictEqual(mv.aliveCounts, undefined);
+    assert.strictEqual(mv.invitation, undefined);
+    assert.ok(Object.keys(mv.nightTally).length === 1, 'pero sí qué víctima hay elegida');
+    g.requestUnlock();
+    const [a, b, ...rest] = g.alive();
+    g.unlockVote(a.id, true);
+    g.unlockVote(b.id, false); // basta un «no»
+    assert.strictEqual(g.state.unlock.status, 'none');
+    g.requestUnlock();
+    g.alive().forEach(p => g.unlockVote(p.id, true));
+    mv = g.masterView('X');
+    assert.strictEqual(mv.fullAccess, true);
+    assert.strictEqual(mv.roles[traitors[0].id], 'traitor');
+    assert.ok(rest.length > 0);
+});
+
+test('sin MC: el organizador juega; la prueba sale sola y da escudo; si le eliminan ve el panel', () => {
+    let now = new Date('2026-10-07T08:00:00Z');
+    const g = new Game(createState({ hostless: true, mode: 'online', days: 3 }), () => now, () => 0);
+    assert.strictEqual(g.config.voting, 'app');
+    assert.strictEqual(g.config.timetable.enabled, true);
+    const org = g.addPlayer({ name: 'Iván', answers: [{ q: INTERVIEW_QUESTIONS[0], a: 'Socorrista' }] });
+    org.organizer = true;
+    for (let i = 0; i < 5; i++) g.addPlayer({ name: `P${i}` });
+    g.start();
+    g.trackPhase(); // amanece el día 1: sale la prueba sola
+    assert.ok(g.state.quiz && g.state.quiz.answer === 'Socorrista');
+    const guesser = g.state.players.find(p => p.id !== org.id);
+    g.quizGuess(guesser.id, org.id);
+    g.advance(); // día 1 sin mesa → noche: se desvela y quien acierta se lleva el escudo
+    g.trackPhase();
+    assert.ok(g.state.quiz === null || g.state.quiz.revealed);
+    assert.strictEqual(g.state.shields[guesser.id], 1);
+    assert.strictEqual(g.fullAccess(), false);
+    org.alive = false;
+    assert.strictEqual(g.fullAccess(), true, 'el organizador eliminado ve el panel completo');
+});
+
 test('modo online: sin Fantasmas', () => {
     assert.strictEqual(normalizeConfig({ mode: 'online' }).ghosts.enabled, false);
     assert.strictEqual(normalizeConfig({ mode: 'presencial' }).ghosts.enabled, true);

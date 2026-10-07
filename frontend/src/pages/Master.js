@@ -28,10 +28,8 @@ export default function Master() {
     const [auth, setAuth] = useState('checking'); // checking | login | ok
     const [chat, setChat] = useState(EMPTY_CHAT);
     const [tab, setTab] = useState('game');
-    // Los roles van ocultos por defecto: el MC puede tener el móvil a la vista de todos
-    const rolesKey = `mc-roles:${code}`;
-    const [showRoles, setShowRoles] = useState(() => storage.get(rolesKey) === '1');
-    const toggleRoles = () => setShowRoles(v => { storage.set(rolesKey, v ? '0' : '1'); return !v; });
+    // El MC dirige a ciegas: solo ve roles, cónclave y Fantasmas si todos los vivos lo aprueban
+    const showRoles = !!state?.fullAccess;
 
     useEffect(() => {
         adoptTokenFromUrl(code);
@@ -76,7 +74,7 @@ export default function Master() {
             { id: 'game', label: 'Partida', icon: <Gavel size={18} /> },
             { id: 'players', label: 'Jugadores', icon: <Users size={18} /> },
             { id: 'tests', label: 'Pruebas', icon: <Coins size={18} /> },
-            ...(state.config.ghosts.enabled ? [{ id: 'ghosts', label: 'Fantasmas', icon: <Ghost size={18} /> }] : []),
+            ...(state.config.ghosts.enabled && state.ghosts ? [{ id: 'ghosts', label: 'Fantasmas', icon: <Ghost size={18} /> }] : []),
             { id: 'chat', label: 'Chats', icon: <ChatCircle size={18} /> },
             { id: 'share', label: 'Compartir', icon: <ShareNetwork size={18} /> }
         ];
@@ -87,9 +85,7 @@ export default function Master() {
                         <span className="room-code">{code}</span>
                         <span className="tag gold">MC</span>
                         <span className="small muted grow" style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{state.name}</span>
-                        <button className="btn sm" onClick={toggleRoles} aria-pressed={showRoles}>
-                            {showRoles ? <><EyeSlash size={18} /> Ocultar roles</> : <><Eye size={18} /> Ver roles</>}
-                        </button>
+                        <UnlockButton s={state} act={act} />
                     </div>
                     <nav className="mc-nav" style={{ maxWidth: 1120, margin: '0 auto', padding: '0 8px' }}>
                         {TABS.map(t => (
@@ -101,7 +97,7 @@ export default function Master() {
                     {tab === 'game' && <GameTab s={state} act={act} showRoles={showRoles} />}
                     {tab === 'players' && <PlayersTab s={state} act={act} showRoles={showRoles} code={code} />}
                     {tab === 'tests' && <TestsTab s={state} act={act} />}
-                    {tab === 'ghosts' && <GhostsTab s={state} />}
+                    {tab === 'ghosts' && state.ghosts && <GhostsTab s={state} />}
                     {tab === 'chat' && <ChatTab s={state} chat={chat} act={act} />}
                     {tab === 'share' && <ShareTab s={state} code={code} act={act} />}
                 </div>
@@ -115,6 +111,21 @@ export default function Master() {
             {content}
             <Toasts toasts={toasts} dismiss={dismiss} />
         </>
+    );
+}
+
+// Si la partida se atasca, el MC pide ver el panel completo; lo aprueban (o no) los vivos desde su móvil
+function UnlockButton({ s, act }) {
+    if (s.fullAccess) return <span className="tag gold"><Eye size={16} /> Panel completo</span>;
+    if (s.phase === 'lobby' || s.phase === 'end') return <span className="tag"><EyeSlash size={16} /> Sin roles</span>;
+    if (s.unlock.status === 'pending') {
+        return <span className="tag">Esperando aprobación: {s.unlock.approvals} de {s.players.filter(p => p.alive).length}</span>;
+    }
+    return (
+        <HoldButton className="sm" hint={null} title="Pide a los jugadores ver roles, cónclave y Fantasmas"
+            onConfirm={() => act('mc:request-unlock', {}, 'Petición enviada a los jugadores')}>
+            <Eye size={18} /> <span>Pedir ver todo</span>
+        </HoldButton>
     );
 }
 
@@ -325,10 +336,7 @@ function LobbyInfo({ s }) {
 
 function RoundtableControl({ s, act, showRoles }) {
     const [pick, setPick] = useState(null);
-    const [targetVotes, setTargetVotes] = useState('');
     const alivePlayers = s.players.filter(p => p.alive);
-    const ghostTarget = s.ghosts.target && alivePlayers.find(p => p.name === s.ghosts.target.name) ? s.ghosts.target : null;
-    const needsTargetVotes = s.config.voting === 'inperson' && ghostTarget && targetVotes === '';
     const candidates = s.round && s.round.candidates;
 
     if (!s.round) {
@@ -337,10 +345,7 @@ function RoundtableControl({ s, act, showRoles }) {
 
     const picked = pick && s.players.find(p => p.id === pick);
     const banish = async () => {
-        if (await act('mc:banish', { playerId: pick, targetVotes }, `Desterrado: ${picked.name}`)) {
-            setPick(null);
-            setTargetVotes('');
-        }
+        if (await act('mc:banish', { playerId: pick }, `Desterrado: ${picked.name}`)) setPick(null);
     };
 
     return (
@@ -375,20 +380,14 @@ function RoundtableControl({ s, act, showRoles }) {
                 ))}
             </div>
 
-            {s.config.voting === 'inperson' && ghostTarget && (
-                <label className="field">
-                    <span>Votos que ha recibido {ghostTarget.name} {showRoles ? '(objetivo secreto de los Fantasmas; ' : '('}obligatorio, pon 0 si nadie)</span>
-                    <input className="input" type="number" inputMode="numeric" min={0} value={targetVotes} onChange={e => setTargetVotes(e.target.value)} />
-                </label>
-            )}
             <div className="row nowrap" style={{ alignItems: 'flex-start' }}>
                 <ActionButton wrapClass="grow" className="block" onClick={() => act('mc:skip-round')}>No sale nadie</ActionButton>
-                <HoldButton wrapClass="grow" className="block" disabled={!pick || needsTargetVotes} onConfirm={banish}
+                <HoldButton wrapClass="grow" className="block" disabled={!pick} onConfirm={banish}
                     hint={picked ? `Mantén para desterrar a ${picked.name}` : null}>
                     <Gavel size={18} /> <span>Desterrar</span>
                 </HoldButton>
             </div>
-            {(!pick || needsTargetVotes) && <p className="btn-hint m0">{!pick ? 'Toca a quien sale desterrado' : `Indica los votos que recibió ${ghostTarget.name}`}</p>}
+            {!pick && <p className="btn-hint m0">Toca a quien sale desterrado</p>}
         </section>
     );
 }
@@ -397,7 +396,7 @@ function NightControl({ s, act, showRoles }) {
     const kills = s.today.conclave;
     const names = ids => ids.map(id => s.players.find(p => p.id === id)?.name).join(', ');
     const [override, setOverride] = useState(null);
-    const candidates = s.players.filter(p => p.alive && (!showRoles || s.roles[p.id] !== 'traitor'));
+    const candidates = s.players.filter(p => p.alive && (!showRoles || s.roles?.[p.id] !== 'traitor'));
     const tallyList = (tally) => Object.entries(tally).sort((a, b) => b[1] - a[1]);
     const toggle = id => setOverride(prev => {
         const cur = prev || [];
@@ -415,21 +414,24 @@ function NightControl({ s, act, showRoles }) {
                     Abrir ya, fuera del horario ({s.config.conclaveHours.start} a {s.config.conclaveHours.end})
                 </label>
             )}
-            {s.invitation.status !== 'none' && (
-                <p className="note m0">Invitación a {s.players.find(p => p.id === s.invitation.targetId)?.name}: {{ pending: 'pendiente', accepted: 'aceptada', rejected: 'rechazada', expired: 'caducada' }[s.invitation.status]}.</p>
+            {s.invitationStatus !== 'none' && (
+                <p className="note m0">
+                    Reclutamiento{showRoles && s.invitation ? ` de ${s.players.find(p => p.id === s.invitation.targetId)?.name}` : ''}:{' '}
+                    {{ pending: 'pendiente', accepted: 'aceptado', rejected: 'rechazado', expired: 'caducado' }[s.invitationStatus]}.
+                </p>
             )}
             {kills === 0 ? <p className="small muted m0">Esta noche no hay asesinatos.</p> : (
                 <>
                     <p className="small m0">Esta noche {kills === 1 ? 'muere 1 jugador' : `mueren ${kills} jugadores`}.</p>
                     <ul className="event-list">
-                        {showRoles
+                        {showRoles && s.nightVotes
                             ? Object.entries(s.nightVotes).map(([id, ids]) => (
                                 <li key={id}><strong>{s.players.find(p => p.id === id)?.name}</strong> elige a {names(ids) || 'nadie'}</li>
                             ))
                             : tallyList(s.nightTally).map(([id, n]) => (
                                 <li key={id} className="row between nowrap"><span>{s.players.find(p => p.id === id)?.name}</span><strong className="num">{n}</strong></li>
                             ))}
-                        {Object.keys(s.nightVotes).length === 0 && <li className="muted">El cónclave aún no ha elegido.</li>}
+                        {s.nightVoters === 0 && <li className="muted">El cónclave aún no ha elegido.</li>}
                     </ul>
                     {s.nightOverride
                         ? <p className="note felon m0">Has decidido tú: {names(s.nightOverride)}. <button className="btn link" onClick={() => act('mc:night-victims', { ids: null })}>Deshacer</button></p>
@@ -649,7 +651,8 @@ function ChatTab({ s, chat, act }) {
     return (
         <section className="card">
             <div className="tabs">
-                {['general', 'traitors', 'dead'].map(ch => (
+                {/* Los chats de Felones y Fantasmas son privados: solo con el panel completo */}
+                {(s.fullAccess ? ['general', 'traitors', 'dead'] : ['general']).map(ch => (
                     <button key={ch} className={`tab ${ch} ${channel === ch ? 'on' : ''}`} onClick={() => setChannel(ch)}>
                         {{ general: 'General', traitors: s.config.factions.traitor, dead: 'Fantasmas' }[ch]} <span className="faint">{(chat[ch] || []).length}</span>
                     </button>

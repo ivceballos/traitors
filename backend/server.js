@@ -8,7 +8,7 @@ const { Server } = require('socket.io');
 const cors = require('cors');
 const mongoose = require('mongoose');
 const jwt = require('jsonwebtoken');
-const { Game, GameError, createState, PRESETS, DEFAULT_CONFIG } = require('./game');
+const { Game, GameError, createState, PRESETS, DEFAULT_CONFIG, INTERVIEW_QUESTIONS } = require('./game');
 
 const PORT = process.env.PORT || 4000;
 const JWT_SECRET = process.env.JWT_SECRET || 'traitors-dev-secret';
@@ -224,13 +224,17 @@ function refresh(room) {
     // Primero lo público (tele), luego lo personal: el último mensaje que recibe cada móvil es el suyo
     io.to(pubRoom(code)).emit('chat-history', { general: game.state.chat.general, traitors: [], dead: [] });
     game.state.players.forEach(p => io.to(playerRoom(code, p.id)).emit('chat-history', chatHistoryFor(game, p.id)));
-    io.to(mcRoom(code)).emit('chat-history', game.state.chat);
+    io.to(mcRoom(code)).emit('chat-history', mcChat(game));
     broadcast(room, { save: false });
 }
 
+// El MC solo ve el chat general (le llega por la sala pública): los de Felones y Fantasmas son
+// privados, salvo que todos le hayan abierto el panel completo
+const mcChat = game => (game.fullAccess() ? game.state.chat : { general: game.state.chat.general, traitors: [], dead: [] });
+
 function emitChat(room, msg) {
     const { code, game } = room;
-    io.to(mcRoom(code)).emit('chat', msg);
+    if (msg.channel !== 'general' && game.fullAccess()) io.to(mcRoom(code)).emit('chat', msg);
     if (msg.channel === 'general') {
         io.to(pubRoom(code)).emit('chat', msg);
         return;
@@ -275,7 +279,7 @@ app.get('/api/leaderboard', async (_req, res) => {
     }
 });
 
-app.get('/api/presets', (_req, res) => res.json({ defaults: DEFAULT_CONFIG, presets: PRESETS }));
+app.get('/api/presets', (_req, res) => res.json({ defaults: DEFAULT_CONFIG, presets: PRESETS, questions: INTERVIEW_QUESTIONS }));
 
 const httpHandler = fn => async (req, res) => {
     try {
@@ -288,7 +292,16 @@ const httpHandler = fn => async (req, res) => {
 };
 
 app.post('/api/rooms', httpHandler(async req => {
-    const room = await createRoom(req.body || {});
+    const body = req.body || {};
+    const room = await createRoom(body);
+    // Sin MC: quien crea la partida entra como jugador (organizador). Su enlace de MC solo abre
+    // el panel si le eliminan o si todos lo aprueban.
+    if (room.game.config.hostless && body.host) {
+        const p = room.game.addPlayer(body.host);
+        p.organizer = true;
+        persist(room);
+        return { code: room.code, mcToken: signMaster(room.code), playerToken: signPlayer(room.code, p.id) };
+    }
     return { code: room.code, mcToken: signMaster(room.code) };
 }));
 
@@ -395,11 +408,14 @@ io.on('connection', (socket) => {
         try { claims = jwt.verify(token, JWT_SECRET); } catch (_) { throw new GameError('Enlace de MC no válido'); }
         if (!claims.mc) throw new GameError('Enlace de MC no válido');
         const room = await requireRoom(claims.r);
+        if (room.game.config.hostless && !room.game.fullAccess()) {
+            throw new GameError('Partida sin MC: el panel se abre si te eliminan o si todos lo aprueban');
+        }
         enterRoom(room);
         socket.data.isMaster = true;
         socket.join(mcRoom(room.code));
         socket.emit('master-state', room.game.masterView(room.code));
-        socket.emit('chat-history', room.game.state.chat);
+        socket.emit('chat-history', mcChat(room.game));
         return { code: room.code, hasPassword: !!room.mcHash };
     });
 
@@ -455,6 +471,51 @@ io.on('connection', (socket) => {
         broadcast(room);
     });
 
+    on('unlock-vote', async ({ approve }) => {
+        const { room, game, id } = await asPlayer();
+        game.unlockVote(id, !!approve);
+        if (game.fullAccess()) io.to(mcRoom(room.code)).emit('chat-history', mcChat(game));
+        broadcast(room);
+    });
+
+    on('ghost-report', async ({ votes }) => {
+        const { room, game, id } = await asPlayer();
+        game.ghostReport(id, votes);
+        broadcast(room);
+    });
+
+    // ----- Organizador (partidas sin MC): juega como uno más y solo puede lo imprescindible -----
+
+    const organizer = (event, fn) => on(event, async payload => {
+        const ctx = await asPlayer();
+        if (!ctx.game.getPlayer(ctx.id).organizer) throw new GameError('Solo quien organiza la partida puede hacer esto');
+        const result = await fn(ctx, payload);
+        broadcast(ctx.room);
+        return result;
+    });
+
+    organizer('org:start', ({ game }) => {
+        if (game.state.phase !== 'lobby') throw new GameError('La partida ya ha empezado');
+        game.advance();
+    });
+    organizer('org:add-bots', ({ game }, { count }) => { game.addBots(Math.min(20, Math.max(1, parseInt(count, 10) || 6))); });
+    organizer('org:kick', ({ room, game }, { playerId }) => {
+        if (game.getPlayer(playerId)?.organizer) throw new GameError('No puedes quitarte a ti');
+        game.removePlayer(playerId);
+        io.to(playerRoom(room.code, playerId)).emit('kicked');
+    });
+    organizer('org:timetable', ({ game }, input) => { game.setTimetable(input || {}); });
+    organizer('org:request-unlock', ({ room, game }) => {
+        game.requestUnlock();
+        io.to(pubRoom(room.code)).emit('notice', 'Quien organiza pide abrir el panel completo: apruébalo o recházalo en tu móvil');
+    });
+    organizer('org:restart', ({ room, game }) => {
+        if (game.state.phase !== 'end') throw new GameError('Solo al terminar la partida');
+        game.restart();
+        room.knownDead = new Set();
+        io.to(pubRoom(room.code)).emit('chat-history', { general: [], traitors: [], dead: [] });
+    });
+
     on('chat', async ({ channel, message }) => {
         const { room, game, id } = await asPlayer();
         emitChat(room, game.addChat(id, channel, message));
@@ -480,7 +541,11 @@ io.on('connection', (socket) => {
         }
     });
     master('mc:close-round', ({ game }) => game.resolveRound());
-    master('mc:banish', ({ game }, { playerId, targetVotes }) => game.banish(playerId, { targetVotes }));
+    master('mc:banish', ({ game }, { playerId }) => game.banish(playerId));
+    master('mc:request-unlock', ({ room, game }) => {
+        game.requestUnlock();
+        io.to(pubRoom(room.code)).emit('notice', 'El MC pide ver el panel completo: apruébalo o recházalo en tu móvil');
+    });
     master('mc:skip-round', ({ game }) => game.skipRound());
     master('mc:night-victims', ({ game }, { ids }) => game.setNightVictims(ids));
     master('mc:conclave-override', ({ game }, { value }) => { game.state.conclaveOverride = !!value; });

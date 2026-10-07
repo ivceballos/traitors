@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { http, mcTokenKey, storage } from '../api';
+import { http, mcTokenKey, playerTokenKey, storage } from '../api';
 import { ArrowLeft, CaretDown, DeviceMobile, Megaphone, Plus, X } from '@phosphor-icons/react';
 import { Segmented, Stepper } from '../components';
 
@@ -42,11 +42,15 @@ export default function Create() {
     const [password, setPassword] = useState('');
     const [error, setError] = useState('');
     const [busy, setBusy] = useState(false);
+    // Sin MC: quien crea también juega (nombre, preferencia y entrevista, como cualquiera)
+    const [host, setHost] = useState({ name: '', wantsTraitor: 'maybe', answers: {} });
+    const [questions, setQuestions] = useState([]);
 
     useEffect(() => {
         http('/api/presets').then(data => {
             const d = data.defaults;
             setConfig({ ...d, schedule: autoSchedule(12, d.days) });
+            setQuestions([...(data.questions || [])].sort(() => Math.random() - 0.5).slice(0, 3));
         }).catch(err => setError(err.message));
     }, []);
 
@@ -65,12 +69,26 @@ export default function Create() {
         setBusy(true);
         setError('');
         try {
-            const { code, mcToken } = await http('/api/rooms', {
+            const hostless = config.mode === 'online' && config.hostless !== false;
+            const { code, mcToken, playerToken } = await http('/api/rooms', {
                 method: 'POST',
-                body: { config, tests: tests.filter(t => t.name.trim()), mcPassword: password }
+                body: {
+                    config: { ...config, hostless },
+                    tests: tests.filter(t => t.name.trim()),
+                    mcPassword: password,
+                    host: hostless ? {
+                        name: host.name.trim(), wantsTraitor: host.wantsTraitor,
+                        answers: questions.map(q => ({ q, a: (host.answers[q] || '').trim() })).filter(x => x.a)
+                    } : undefined
+                }
             });
             storage.set(mcTokenKey(code), mcToken);
-            navigate(`/mc/${code}`);
+            if (playerToken) {
+                storage.set(playerTokenKey(code), playerToken);
+                navigate(`/p/${code}`);
+            } else {
+                navigate(`/mc/${code}`);
+            }
         } catch (err) {
             setError(err.message);
             setBusy(false);
@@ -104,9 +122,35 @@ export default function Create() {
                     <span className="tiny muted">
                         {config.mode === 'online'
                             ? 'Cada uno desde su casa: se vota en la app y podéis usar el horario automático. Sin Sociedad de los Fantasmas.'
-                            : 'Todos en el mismo sitio, con la tele de fondo. Los eliminados forman la Sociedad de los Fantasmas.'}
+                            : 'Todos en el mismo sitio, con la tele de fondo. Los eliminados forman la Sociedad de los Fantasmas. El MC dirige sin ver los roles.'}
                     </span>
                 </div>
+                {config.mode === 'online' && (
+                    <label className="check">
+                        <input type="checkbox" checked={config.hostless !== false} onChange={e => set('hostless', e.target.checked)} />
+                        <span>Sin MC: yo también juego. La partida avanza sola por horario y nadie ve los roles.</span>
+                    </label>
+                )}
+                {config.mode === 'online' && config.hostless !== false && (
+                    <div className="stack-sm">
+                        <label className="field">
+                            <span>Tu nombre</span>
+                            <input className="input" value={host.name} maxLength={24} onChange={e => setHost(h => ({ ...h, name: e.target.value }))} autoComplete="given-name" />
+                        </label>
+                        <div className="field">
+                            <span>¿Te gustaría ser de los {config.factions.traitor}?</span>
+                            <Segmented value={host.wantsTraitor} onChange={v => setHost(h => ({ ...h, wantsTraitor: v }))}
+                                options={[{ value: 'yes', label: 'Sí' }, { value: 'maybe', label: 'Me da igual' }, { value: 'no', label: 'Prefiero que no' }]} />
+                        </div>
+                        {questions.map(q => (
+                            <label key={q} className="field">
+                                <span className="small">{q}</span>
+                                <input className="input" maxLength={120} value={host.answers[q] || ''}
+                                    onChange={e => setHost(h => ({ ...h, answers: { ...h.answers, [q]: e.target.value } }))} />
+                            </label>
+                        ))}
+                    </div>
+                )}
                 <div className="row between">
                     <span>Jugadores</span>
                     <Stepper value={players} min={MIN_PLAYERS} max={MAX_PLAYERS} onChange={setPlayersAuto} label="Jugadores" />
@@ -305,7 +349,9 @@ export default function Create() {
             )}
 
             {error && <p className="blood">{error}</p>}
-            <button className="btn primary block lg" disabled={busy}>{busy ? <><span className="spinner-sm" />Creando…</> : 'Crear partida'}</button>
+            <button className="btn primary block lg" disabled={busy || (config.mode === 'online' && config.hostless !== false && !host.name.trim())}>
+                {busy ? <><span className="spinner-sm" />Creando…</> : 'Crear partida'}
+            </button>
         </form>
     );
 }

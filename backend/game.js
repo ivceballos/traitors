@@ -142,6 +142,8 @@ function normalizeConfig(input = {}) {
     const g = { ...d.ghosts, ...(input.ghosts || {}) };
     const mode = input.mode === 'online' ? 'online' : 'presencial';
     const tt = { ...d.timetable, ...(input.timetable || {}) };
+    // Sin MC: todo se vota en la app y la partida avanza por horario
+    if (input.hostless) { input = { ...input, voting: 'app' }; tt.enabled = true; }
     const hhmm = (v, fallback) => (HHMM.test(v) ? v : fallback);
     const thresholds = (Array.isArray(g.thresholds) ? g.thresholds : d.ghosts.thresholds)
         .slice(0, 5)
@@ -172,6 +174,7 @@ function normalizeConfig(input = {}) {
             night: hhmm(tt.night, d.timetable.night)
         },
         quizGold: clampInt(input.quizGold, 0, 100000, d.quizGold),
+        hostless: !!input.hostless,
         ghosts: {
             // Los Fantasmas son cosa del juego presencial
             enabled: mode === 'presencial' && g.enabled !== false,
@@ -297,6 +300,7 @@ function createState(config = {}, tests = []) {
         quiz: null, // ronda de «¿Quién dijo qué?»
         quizUsed: [], // respuestas ya preguntadas («jugadorId:índice»)
         phaseKey: null, phaseSince: null, // para el horario automático
+        unlock: { status: 'none', approvals: {} }, // el MC pide ver todo: 'none' | 'pending' | 'unlocked'
         recorded: false // resultado ya guardado en la tabla de ganadores
     };
 }
@@ -456,6 +460,14 @@ class Game {
             for (const b of bots()) {
                 if (this.state.phase !== 'endgame' || this.state.endgame.votes[b.id]) continue;
                 this.endgameVote(b.id, this.random() < 0.6 ? 'end' : 'banish');
+                changed = true;
+            }
+        }
+
+        if (this.state.unlock.status === 'pending') {
+            for (const b of bots()) {
+                if (this.state.unlock.status !== 'pending' || this.state.unlock.approvals[b.id]) continue;
+                this.unlockVote(b.id, true);
                 changed = true;
             }
         }
@@ -681,24 +693,35 @@ class Game {
     }
 
     // Votación en persona (o el MC rompe un empate): registra directamente al desterrado
-    banish(playerId, { targetVotes } = {}) {
+    banish(playerId) {
         const s = this.state;
         this.requirePhase('roundtable');
         if (!s.round) throw new GameError('No hay ninguna votación abierta');
         const p = this.getPlayer(playerId);
         if (!p || !p.alive) throw new GameError('Jugador no válido');
-        const target = this.ghostTargetToday();
-        if (this.config.voting === 'app') {
-            if (s.round.revotes === 0) this.scoreGhostVotes(this.roundTally()[target?.id] || 0);
-        } else if (target) {
-            // En persona el MC debe decir cuántos votos recibió el objetivo de los Fantasmas
-            const n = clampInt(targetVotes, 0, 100, null);
-            if (targetVotes === undefined || targetVotes === null || targetVotes === '' || n === null) {
-                throw new GameError(`Indica cuántos votos ha recibido ${target.name}`);
-            }
-            this.scoreGhostVotes(n);
+        // En la app los votos al objetivo se cuentan solos; en persona los apuntan los Fantasmas
+        if (this.config.voting === 'app' && s.round.revotes === 0) {
+            this.scoreGhostVotes(this.roundTally()[this.ghostTargetToday()?.id] || 0);
         }
         this.endRound(p.id);
+    }
+
+    // Votación en persona: los propios Fantasmas apuntan cuántos votos recibió su objetivo en la
+    // primera votación del día (el MC no sabe ni quién es). Vale el primer apunte del día.
+    ghostReport(playerId, votes) {
+        const s = this.state;
+        const g = s.ghosts;
+        const p = this.requirePlayer(playerId, { alive: false });
+        if (p.alive) throw new GameError('Solo los Fantasmas pueden apuntar esto');
+        if (!this.config.ghosts.enabled || this.config.voting === 'app') throw new GameError('Ahora no se puede hacer eso');
+        this.requirePhase('roundtable');
+        if (!g.today) throw new GameError('Hoy no hay objetivo');
+        if (g.today.reported) throw new GameError('Ya se han apuntado los votos de hoy');
+        const n = clampInt(votes, 0, 100, null);
+        if (n === null) throw new GameError('Número de votos no válido');
+        g.today.reported = true;
+        g.today.reportedBy = p.name;
+        this.scoreGhostVotes(n);
     }
 
     skipRound() {
@@ -775,6 +798,42 @@ class Game {
         return p;
     }
 
+    // ----- Panel completo del MC -----
+    // Si la partida se atasca, el MC puede pedir ver roles, cónclave y Fantasmas. Solo se abre si
+    // lo aprueban todos los vivos; basta un «no» para cancelarlo.
+
+    requestUnlock() {
+        const s = this.state;
+        if (s.phase === 'lobby' || s.phase === 'end') throw new GameError('Ahora no hace falta');
+        if (s.unlock.status === 'unlocked') throw new GameError('El panel ya está abierto');
+        s.unlock = { status: 'pending', approvals: {} };
+        this.log('unlock', 'El MC pide ver el panel completo para desatascar la partida');
+    }
+
+    unlockVote(playerId, approve) {
+        const s = this.state;
+        if (s.unlock.status !== 'pending') throw new GameError('No hay ninguna petición del MC');
+        const p = this.requirePlayer(playerId);
+        if (!approve) {
+            s.unlock = { status: 'none', approvals: {} };
+            this.log('unlock-no', 'Alguien no aprueba que el MC vea el panel completo');
+            return;
+        }
+        s.unlock.approvals[p.id] = true;
+        if (this.alive().every(x => s.unlock.approvals[x.id])) {
+            s.unlock.status = 'unlocked';
+            this.log('unlock-yes', 'Todos aprueban: el MC ve el panel completo');
+        }
+    }
+
+    // ¿Puede el MC verlo todo? Por unanimidad, o (sin MC) si el organizador ya está eliminado
+    fullAccess() {
+        const s = this.state;
+        if (s.unlock.status === 'unlocked' || s.phase === 'end') return true;
+        const org = s.players.find(p => p.organizer);
+        return !!(this.config.hostless && org && !org.alive);
+    }
+
     // ----- Horario automático -----
 
     // Anota cuándo empezó la fase actual (el horario cuenta desde ahí)
@@ -782,11 +841,36 @@ class Game {
         const s = this.state;
         const key = `${s.phase}:${s.day}:${s.endgameRound ? 'e' : ''}`;
         if (s.phaseKey !== key) {
+            const before = s.phaseKey ? s.phaseKey.split(':')[0] : null;
             s.phaseKey = key;
             s.phaseSince = this.now().toISOString();
+            if (this.config.hostless) this.hostlessPhase(before);
             return true;
         }
         return false;
+    }
+
+    // Sin MC la prueba del día va sola: «¿Quién dijo qué?» sale cada mañana, se desvela al abrir
+    // la mesa y uno de los que aciertan (al azar) se lleva el escudo de esa noche.
+    hostlessPhase(before) {
+        const s = this.state;
+        try {
+            if (s.phase === 'day' && !s.quiz) {
+                const left = s.players.reduce((n, p) => n + (p.answers || []).length, 0) - s.quizUsed.length;
+                if (left > 0) this.quizNext();
+            } else if (before === 'day' && s.quiz && !s.quiz.revealed) {
+                this.quizReveal();
+                const winners = s.quiz.correct.map(id => this.getPlayer(id)).filter(p => p?.alive);
+                if (winners.length && ['day', 'roundtable', 'night'].includes(s.phase)) {
+                    const lucky = winners[Math.floor(this.random() * winners.length)];
+                    s.shields[lucky.id] = s.day;
+                }
+            } else if (s.phase === 'night' || s.phase === 'end') {
+                s.quiz = null;
+            }
+        } catch (err) {
+            if (!(err instanceof GameError)) throw err;
+        }
     }
 
     setTimetable(input) {
@@ -1038,7 +1122,8 @@ class Game {
             skulls: g.skulls,
             percent,
             stolen: Math.floor(treasure * percent / 100),
-            target: g.today ? { name: name(g.today.targetId), votes: g.today.votes, skulls: g.today.skulls } : null,
+            target: g.today ? { name: name(g.today.targetId), votes: g.today.votes, skulls: g.today.skulls, reported: !!g.today.reported, reportedBy: g.today.reportedBy || null } : null,
+            inPerson: this.config.voting !== 'app',
             nextThreshold: thresholds.find(t => g.skulls < t.skulls) || null,
             thresholds,
             perVote: this.config.ghosts.perVote,
@@ -1178,6 +1263,7 @@ class Game {
                 name: p.name,
                 photo: this.photoUrl(code, p),
                 alive: p.alive,
+                organizer: !!p.organizer,
                 eliminatedBy: p.eliminatedBy,
                 eliminatedDay: p.eliminatedDay,
                 // El rol solo se conoce al terminar, o al ser eliminado si así se configura
@@ -1190,11 +1276,13 @@ class Game {
             events: s.events.slice(-30),
             winner: s.winner,
             mode: c.mode,
+            hostless: c.hostless,
             endgameEnabled: c.endgame,
             timetable: c.timetable,
             phaseSince: s.phaseSince,
             endgame: s.endgame && { voters: Object.keys(s.endgame.votes) },
             endgameRound: !!s.endgameRound,
+            unlock: { status: s.unlock.status, approvals: Object.keys(s.unlock.approvals).length },
             quiz: s.quiz && {
                 id: s.quiz.id,
                 question: s.quiz.question,
@@ -1229,7 +1317,9 @@ class Game {
             myQuizGuess: s.quiz?.guesses[p.id] || null,
             quizIsMine: !!s.quiz && !s.quiz.revealed && s.quiz.authorId === p.id,
             wantsTraitor: p.wantsTraitor,
-            answers: p.answers || []
+            answers: p.answers || [],
+            organizer: !!p.organizer,
+            myUnlockVote: s.unlock.status === 'pending' ? !!s.unlock.approvals[p.id] : null
         };
         if (p.role === 'traitor') {
             view.allies = s.players.filter(x => x.role === 'traitor').map(x => ({ id: x.id, name: x.name, alive: x.alive }));
@@ -1249,25 +1339,33 @@ class Game {
         return view;
     }
 
-    // El MC lo ve todo
+    // El MC dirige con datos, pero no sabe quién es quién: ni roles, ni qué Felón eligió a quién,
+    // ni a quién reclutaron, ni recuentos por bando (delatarían el rol de los desterrados).
+    // Los roles los ve como todos: al final, o al eliminar a alguien si así se configura.
     masterView(code) {
         const s = this.state;
         return {
             ...this.publicView(code),
             config: this.config,
-            roles: Object.fromEntries(s.players.map(p => [p.id, p.role])),
             roundVotes: s.round ? s.round.votes : {},
             roundTally: s.round ? this.roundTally() : {},
-            nightVotes: s.nightVotes,
-            nightTally: this.nightTally(),
+            nightTally: this.nightTally(), // víctimas elegidas, sin decir por quién
+            nightVoters: Object.keys(s.nightVotes).length,
             suspicionTally: this.suspicionTally(),
             suspicionCount: Object.keys(s.suspicions || {}).length,
             nightOverride: s.nightOverride,
-            invitation: s.invitation,
+            invitationStatus: s.invitation.status,
             conclaveOverride: s.conclaveOverride,
-            ghosts: this.ghostSummary(),
-            aliveCounts: { traitor: this.aliveTraitors().length, loyal: this.aliveLoyals().length },
+            // Los Fantasmas tampoco son cosa del MC: solo los ve al final, como todos
             inbox: s.inbox,
+            fullAccess: this.fullAccess(),
+            ...(this.fullAccess() ? {
+                roles: Object.fromEntries(s.players.map(p => [p.id, p.role])),
+                nightVotes: s.nightVotes,
+                invitation: s.invitation,
+                aliveCounts: { traitor: this.aliveTraitors().length, loyal: this.aliveLoyals().length },
+                ghosts: this.config.ghosts.enabled ? this.ghostSummary() : undefined
+            } : {}),
             shields: Object.keys(s.shields).filter(id => s.shields[id] === s.day),
             endgameVotes: s.endgame ? s.endgame.votes : {},
             quizFull: s.quiz,

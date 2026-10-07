@@ -39,6 +39,10 @@ Web app del juego de traición «Fieles y Felones» (inspirado en *Traitors*) pa
   - Modo «A distancia» (`mode: 'online'`): sin Fantasmas y con votación en la app.
   - Tabla de ganadores (`/ranking`): se guarda cada partida terminada (sin bots) en la colección `results`.
   - Jugadores de prueba (bots) desde la sala de espera.
+  - **MC a ciegas** (decidido por Iván): el MC no ve roles, recuentos por bando, qué Felón eligió a quién, a quién reclutaron, los Fantasmas ni los chats privados. Solo el chat general y los datos (votos, víctimas elegidas, sospechas, botín). En persona, los votos al objetivo de los Fantasmas los apuntan los propios Fantasmas.
+  - **Panel completo**: el MC lo pide si la partida se atasca y solo se abre si lo aprueban todos los vivos (un «no» lo cancela).
+  - **Sin MC** (a distancia, `hostless`): quien crea la partida juega como uno más (organizador). Horario automático obligatorio, votación en la app, «¿Quién dijo qué?» sale sola cada mañana y se desvela al abrir la mesa, y uno de los que aciertan (al azar) se lleva el escudo. El organizador puede empezar, añadir bots, pausar el horario, pedir el panel completo y repetir; si le eliminan, abre el panel completo.
+  - Ojo: el enlace de reentrada de un jugador (pestaña Jugadores del MC) abre su sesión y por tanto su rol. Es para quien pierde el móvil.
 - En `localhost` la app ignora `config.js` y usa siempre el servidor local.
 
 ### Actualizar el NAS (comprobado el 7/10/2026)

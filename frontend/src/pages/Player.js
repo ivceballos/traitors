@@ -231,11 +231,13 @@ function Game({ view, me, chat, act, onShowRole, code, push }) {
                 {view.quiz && <QuizPanel view={view} me={me} self={self} act={act} />}
                 {view.spotlight && <SpotlightCard view={view} />}
                 {me.inbox.length > 0 && <Inbox inbox={me.inbox} />}
-                {view.phase === 'lobby' && <Lobby view={view} self={self} act={act} push={push} />}
+                {view.phase === 'lobby' && <Lobby view={view} self={self} act={act} push={push} me={me} />}
                 {view.phase === 'endgame' && self.alive && <EndgamePanel view={view} me={me} act={act} />}
                 {view.phase === 'roundtable' && self.alive && <RoundtablePanel view={view} me={me} act={act} />}
                 {view.phase === 'night' && self.alive && <SuspectPanel view={view} me={me} act={act} />}
-                {dead && me.ghostSociety && <GhostPanel ghost={me.ghostSociety} />}
+                {dead && me.ghostSociety && <GhostPanel ghost={me.ghostSociety} view={view} act={act} />}
+                {view.unlock?.status === 'pending' && self.alive && <UnlockPrompt view={view} me={me} act={act} />}
+                {me.organizer && view.phase !== 'lobby' && <OrganizerPanel view={view} me={me} self={self} act={act} code={code} />}
 
                 {view.phase !== 'lobby' && <MainTabs view={view} me={me} self={self} chat={chat} act={act} />}
                 <DeviceLink code={code} />
@@ -351,9 +353,23 @@ function PhaseBlock({ view, me, self }) {
     );
 }
 
-function Lobby({ view, self, act, push }) {
+function Lobby({ view, self, act, push, me }) {
     return (
         <section className="stack">
+            {me.organizer && view.hostless && (
+                <div className="card stack-sm">
+                    <h3 className="m0">Organizas tú</h3>
+                    <p className="small muted m0">
+                        Juegas como uno más: no verás ningún rol. Cuando estéis todos, empieza la partida; después avanza sola
+                        (amanecer {view.timetable.dawn}, mesa {view.timetable.roundtable}, noche {view.timetable.night}).
+                    </p>
+                    <ActionButton className="primary block lg" disabled={view.players.length < 4}
+                        hint={`Hacen falta al menos 4 jugadores (hay ${view.players.length})`} onClick={() => act('org:start')}>
+                        Empezar partida
+                    </ActionButton>
+                    <ActionButton className="block" onClick={() => act('org:add-bots', { count: 6 })}>Añadir 6 jugadores de prueba</ActionButton>
+                </div>
+            )}
             <PhotoPicker
                 value={null}
                 size={64}
@@ -680,9 +696,66 @@ function GhostWelcome({ onClose }) {
     );
 }
 
-function GhostPanel({ ghost }) {
+// El MC pide ver el panel completo: hace falta que lo aprueben todos los vivos
+function UnlockPrompt({ view, me, act }) {
+    const alive = view.players.filter(p => p.alive).length;
+    return (
+        <section className="card hot stack-sm">
+            <h3 className="m0">El MC pide ver todo</h3>
+            <p className="small m0">Para desatascar la partida quiere ver los roles, el cónclave y los Fantasmas. Solo se abre si lo aprobáis todos los vivos ({view.unlock.approvals} de {alive}). Un «no» lo cancela.</p>
+            {me.myUnlockVote ? (
+                <p className="note accent m0">Lo has aprobado.</p>
+            ) : (
+                <div className="cols">
+                    <ActionButton className="primary block" onClick={() => act('unlock-vote', { approve: true })}>Aprobar</ActionButton>
+                    <ActionButton className="block" onClick={() => act('unlock-vote', { approve: false })}>No</ActionButton>
+                </div>
+            )}
+        </section>
+    );
+}
+
+// Quien organiza una partida sin MC juega como uno más; solo puede pausar el horario y,
+// si le eliminan (o todos lo aprueban), abrir el panel completo
+function OrganizerPanel({ view, me, self, act, code }) {
+    const tt = view.timetable;
+    const fullAccess = !self.alive || view.unlock?.status === 'unlocked';
+    if (!view.hostless) return null;
+    return (
+        <section className="card stack-sm">
+            <h3 className="m0">Organizas tú</h3>
+            {(
+                <>
+                    <p className="small muted m0">
+                        {tt.enabled ? `La partida avanza sola: amanecer ${tt.dawn}, mesa ${tt.roundtable}, noche ${tt.night}.` : 'El horario automático está en pausa.'}
+                    </p>
+                    <div className="row">
+                        <ActionButton onClick={() => act('org:timetable', { enabled: !tt.enabled })}>{tt.enabled ? 'Pausar horario' : 'Reanudar horario'}</ActionButton>
+                        {fullAccess
+                            ? <Link className="btn primary" to={`/mc/${code}`}>Abrir el panel completo</Link>
+                            : view.unlock?.status === 'none' && <ActionButton onClick={() => act('org:request-unlock')}>Pedir ver todo</ActionButton>}
+                    </div>
+                </>
+            )}
+        </section>
+    );
+}
+
+function GhostPanel({ ghost, view, act }) {
+    const [votes, setVotes] = useState('');
+    const reporting = ghost.inPerson && view.phase === 'roundtable' && ghost.target && !ghost.target.reported;
     return (
         <section className="card stack">
+            {reporting && (
+                <div className="note gold stack-sm">
+                    <span>En persona, el MC no sabe quién es vuestro objetivo. Apuntad vosotros cuántos votos recibió <strong>{ghost.target.name}</strong> en la primera votación de hoy (basta con que lo haga uno).</span>
+                    <div className="row nowrap">
+                        <input className="input" type="number" inputMode="numeric" min={0} value={votes} onChange={e => setVotes(e.target.value)} style={{ maxWidth: 110 }} />
+                        <ActionButton className="primary" disabled={votes === ''} onClick={() => act('ghost-report', { votes })}>Apuntar</ActionButton>
+                    </div>
+                </div>
+            )}
+            {ghost.target?.reported && ghost.inPerson && <p className="tiny muted m0">Votos de hoy apuntados por {ghost.target.reportedBy}.</p>}
             <Art name="fantasma.jpg" className="ghost-art" />
             <div className="row between">
                 <h3 className="m0 row nowrap" style={{ gap: 8 }}><Ghost size={20} /> Sociedad Secreta</h3>
@@ -900,6 +973,9 @@ function EndScreen({ view, me, chat, self, act }) {
                     )}
                     <TestsTable tests={view.tests} />
                 </section>
+            )}
+            {me.organizer && view.hostless && (
+                <ActionButton className="primary block" onClick={() => act('org:restart')}>Otra partida con los mismos</ActionButton>
             )}
             <Link to="/ranking" className="btn block"><Trophy size={18} /> Tabla de ganadores</Link>
 
