@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { ArrowRight, Crown, User } from '@phosphor-icons/react';
 import { http } from '../api';
+import { Art } from '../components';
 
 // Partidas en las que ya participa este dispositivo (para volver con un toque)
 function savedGames() {
@@ -39,6 +40,7 @@ export default function Home() {
         <div className="page narrow home">
             <div>
                 <header className="home-hero">
+                    <Art name="encapuchados.png" />
                     <h1>Trai<span>dores</span></h1>
                     <p>El juego de traición para viajes con amigos.</p>
                 </header>

@@ -6,6 +6,7 @@ import Create from './pages/Create';
 import Player from './pages/Player';
 import Master from './pages/Master';
 import TV from './pages/TV';
+import { Atmosphere } from './components';
 import '@fontsource-variable/archivo/wdth.css';
 import '@fontsource-variable/geist';
 import './styles.css';
@@ -13,6 +14,7 @@ import './styles.css';
 const root = ReactDOM.createRoot(document.getElementById('root'));
 root.render(
   <BrowserRouter>
+    <Atmosphere />
     <Routes>
       <Route path="/" element={<Home />} />
       <Route path="/crear" element={<Create />} />

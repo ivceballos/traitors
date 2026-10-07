@@ -5,7 +5,7 @@ import {
 } from '@phosphor-icons/react';
 import { formatEuros, formatGold, playerTokenKey, send, socket, storage } from '../api';
 import {
-    Avatar, CopyBox, Loading, Modal, OfflineBanner, PhotoPicker, RoleTag, TestsTable, Thresholds, Toasts,
+    Art, Avatar, CopyBox, Loading, Modal, OfflineBanner, PhotoPicker, RoleTag, TestsTable, Thresholds, Toasts,
     useConnection, useSocketEvent, useToasts
 } from '../components';
 
@@ -473,7 +473,8 @@ function RoleModal({ me, view, onClose }) {
                             <span className="display">Tu<br />rol</span>
                             <span className="small muted">Toca para darle la vuelta</span>
                         </div>
-                        <div className={`role-face back ${me.role}`}>
+                        <div className={`role-face back ${me.role} has-art`}>
+                            <Art name={isTraitor ? 'punal.jpg' : 'farol.jpg'} />
                             <span className="small">Eres de los</span>
                             <span className="display">{isTraitor ? view.factions.traitor : view.factions.loyal}</span>
                             <span className="small">
@@ -496,7 +497,7 @@ function GhostWelcome({ onClose }) {
     return (
         <Modal>
             <div className="card stack">
-                <Ghost size={40} weight="light" />
+                <Art name="fantasma.jpg" className="ghost-art" />
                 <h2>La Sociedad Secreta de los Fantasmas</h2>
                 <p className="m0">Has sido eliminado, pero tu partida sigue. Ahora formas parte de una sociedad secreta que los vivos no conocen.</p>
                 <p className="m0">Cada día recibiréis el nombre de un jugador. Conseguid, sin que se note, que los vivos le voten en la mesa redonda. Cada voto suma calaveras, y si lo destierran sumáis más. Con suficientes calaveras robáis parte del botín final.</p>
@@ -510,6 +511,7 @@ function GhostWelcome({ onClose }) {
 function GhostPanel({ ghost }) {
     return (
         <section className="card stack">
+            <Art name="fantasma.jpg" className="ghost-art" />
             <div className="row between">
                 <h3 className="m0 row nowrap" style={{ gap: 8 }}><Ghost size={20} /> Sociedad Secreta</h3>
                 <span className="tag">Solo para eliminados</span>

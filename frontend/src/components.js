@@ -189,3 +189,29 @@ export function TestsTable({ tests }) {
         </table>
     );
 }
+
+// Fondo de castillo con niebla y antorchas (va detrás de todas las pantallas)
+export function Atmosphere() {
+    return (
+        <>
+            <div className="atmosphere" aria-hidden="true" style={{
+                '--castle-v': `url(${process.env.PUBLIC_URL}/img/castillo-vertical.jpg)`,
+                '--castle-h': `url(${process.env.PUBLIC_URL}/img/castillo-horizontal.jpg)`
+            }}>
+                <div className="castle" />
+                <div className="torch left" />
+                <div className="torch right" />
+                <div className="fog" />
+                <div className="vignette" />
+            </div>
+            <div className="grain" aria-hidden="true" />
+        </>
+    );
+}
+
+// Ilustración opcional de /public/img: si el archivo no existe, desaparece sin dejar hueco
+export function Art({ name, className = '', alt = '' }) {
+    const [missing, setMissing] = useState(false);
+    if (missing) return null;
+    return <img className={`art ${className}`} src={`${process.env.PUBLIC_URL}/img/${name}`} alt={alt} onError={() => setMissing(true)} decoding="async" />;
+}
