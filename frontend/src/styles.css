@@ -17,6 +17,7 @@
     --text: #e4ebf3;
     --muted: #8d9db2;
     --faint: #5a6a80;
+    --gold: #d6aa4c; /* el dorado del logo */
     --accent: #d23a42;
     --accent-hover: #e04d54;
     --accent-soft: rgba(210, 58, 66, 0.16);
@@ -267,7 +268,7 @@ button.player-tile:disabled { cursor: default; }
 .home-hero { padding: 48px 0 32px; }
 .home-hero h1 { font-size: clamp(3.4rem, 17vw, 7rem); line-height: 0.9; margin-top: 18px; }
 .home-hero h1 em { font-family: var(--font-display-italic); font-style: italic; color: var(--muted); font-size: 0.7em; margin-right: 0.12em; }
-.home-hero h1 span { display: block; color: var(--accent); }
+.home-hero h1 span { display: block; color: var(--gold); }
 .home-hero p { color: var(--muted); max-width: 30ch; margin: 18px 0 0; font-size: 1.05rem; }
 
 /* ============ Panel del MC ============ */
