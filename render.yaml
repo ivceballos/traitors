@@ -1,7 +1,7 @@
 # Despliegue en Render: un único servicio que sirve la API, el tiempo real y la web.
 services:
   - type: web
-    name: traidores
+    name: fieles-y-felones
     runtime: node
     plan: free
     buildCommand: cd frontend && npm ci && npm run build && cd ../backend && npm ci --omit=dev
