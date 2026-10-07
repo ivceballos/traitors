@@ -30,6 +30,16 @@ Web app del juego de traición «Fieles y Felones» (inspirado en *Traitors*) pa
   - Voto bloqueado al confirmarlo. Pantalla del jugador con la acción arriba y pestañas.
   - Tele: Wake Lock, velo, código y QR siempre visibles. Enlace de reentrada por jugador desde el MC.
 - Logo nuevo e iconos.
+- Ideas tomadas de The Traitors Live (Londres) y The Traitors: Anywhere (WhatsApp), adaptadas (7/10/2026):
+  - Preferencia de rol al unirse (Sí / Me da igual / Prefiero que no): papeletas 4 / 1 / 0,25 en el sorteo; nadie queda descartado.
+  - Entrevista secreta (3 preguntas al unirse) y prueba «¿Quién dijo qué?»: el MC saca una respuesta, los demás adivinan el autor y cada acierto suma `quizGold` a esa prueba.
+  - Escudo: el MC lo da (normalmente a quien gana una prueba) y frena el asesinato de esa noche; los Felones no saben quién lo tiene.
+  - Final (`endgame`): tras el último día los supervivientes votan acabar o desterrar a otro; solo se acaba por unanimidad o con 2 vivos.
+  - Horario automático (`timetable`): amanecer, mesa y noche a horas fijas; el MC puede avanzar a mano o pausarlo.
+  - Modo «A distancia» (`mode: 'online'`): sin Fantasmas y con votación en la app.
+  - Tabla de ganadores (`/ranking`): se guarda cada partida terminada (sin bots) en la colección `results`.
+  - Jugadores de prueba (bots) desde la sala de espera.
+- En `localhost` la app ignora `config.js` y usa siempre el servidor local.
 
 ## En curso: despliegue con NAS principal y Render de reserva
 
