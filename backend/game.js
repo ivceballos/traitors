@@ -9,6 +9,30 @@ const MAX_CHAT_HISTORY = 300;
 const MAX_MESSAGE_LENGTH = 500;
 const MAX_REVOTES = 3;
 const MIN_PLAYERS = 4;
+// Entrevista al unirse: cada jugador responde unas cuantas y luego salen en «¿Quién dijo qué?»
+const INTERVIEW_QUESTIONS = [
+    '¿Cuál fue tu primer trabajo?',
+    '¿Qué comida no soportas?',
+    'Un concierto al que fuiste y prefieres no contar',
+    'Tu película favorita de pequeño',
+    'Un apodo que te pusieron',
+    '¿Qué superpoder elegirías?',
+    'Lo más raro que has comido',
+    'El peor regalo que te han hecho',
+    'Tu canción para el karaoke',
+    'Un miedo absurdo que tienes',
+    '¿Cuál fue tu primer móvil?',
+    'Si fueras un animal, ¿cuál serías?',
+    'Tu mayor manía',
+    'La última vez que lloraste viendo algo',
+    'Un famoso con el que te han confundido'
+];
+const INTERVIEW_COUNT = 3;
+// Papeletas para salir Felón según lo que cada uno prefiera (nadie queda descartado del todo)
+const TRAITOR_WEIGHT = { yes: 4, maybe: 1, no: 0.25 };
+
+const BOT_ANSWERS = ['Camarero en una boda', 'Las aceitunas', 'Un tributo a ABBA', 'El Rey León', 'Volar', 'Grillos fritos',
+    'Un calendario de 2003', 'Dancing Queen', 'Las palomas', 'Un Nokia 3310', 'Un búho', 'Ordenar los calcetines por colores'];
 const BOT_NAMES = ['Ana', 'Bruno', 'Carla', 'Diego', 'Elena', 'Fran', 'Gala', 'Hugo', 'Inés', 'Javi', 'Lola', 'Marco',
     'Nuria', 'Óscar', 'Paula', 'Quique', 'Rosa', 'Sergio', 'Tere', 'Unai', 'Vera', 'Xavi', 'Yago', 'Zoe'];
 
@@ -33,6 +57,13 @@ const DEFAULT_CONFIG = {
     conclaveHours: null, // { start: '22:30', end: '03:00' } o null (abierto toda la noche)
     timezone: 'Europe/Madrid',
     goldPerEuro: 100,
+    // 'presencial': todos juntos (hay Fantasmas) · 'online': a distancia (sin Fantasmas)
+    mode: 'presencial',
+    // Final del programa: tras el último día los supervivientes votan si acabar o desterrar otra vez
+    endgame: true,
+    // Horario automático: la partida avanza sola a estas horas (útil a distancia, durante días)
+    timetable: { enabled: false, dawn: '10:00', roundtable: '19:00', night: '22:30' },
+    quizGold: 100, // oro por cada acierto en «¿Quién dijo qué?»
     ghosts: {
         enabled: true,
         perVote: 1,
@@ -109,6 +140,9 @@ function normalizeConfig(input = {}) {
         }
     } catch (_) { /* zona horaria no válida */ }
     const g = { ...d.ghosts, ...(input.ghosts || {}) };
+    const mode = input.mode === 'online' ? 'online' : 'presencial';
+    const tt = { ...d.timetable, ...(input.timetable || {}) };
+    const hhmm = (v, fallback) => (HHMM.test(v) ? v : fallback);
     const thresholds = (Array.isArray(g.thresholds) ? g.thresholds : d.ghosts.thresholds)
         .slice(0, 5)
         .map(t => ({ skulls: clampInt(t.skulls, 1, 999, 1), percent: clampInt(t.percent, 1, 100, 50) }))
@@ -129,14 +163,50 @@ function normalizeConfig(input = {}) {
         conclaveHours,
         timezone,
         goldPerEuro: clampInt(input.goldPerEuro, 1, 100000, d.goldPerEuro),
+        mode,
+        endgame: input.endgame !== false,
+        timetable: {
+            enabled: !!tt.enabled,
+            dawn: hhmm(tt.dawn, d.timetable.dawn),
+            roundtable: hhmm(tt.roundtable, d.timetable.roundtable),
+            night: hhmm(tt.night, d.timetable.night)
+        },
+        quizGold: clampInt(input.quizGold, 0, 100000, d.quizGold),
         ghosts: {
-            enabled: g.enabled !== false,
+            // Los Fantasmas son cosa del juego presencial
+            enabled: mode === 'presencial' && g.enabled !== false,
             perVote: clampInt(g.perVote, 0, 10, d.ghosts.perVote),
             perElimination: clampInt(g.perElimination, 0, 20, d.ghosts.perElimination),
             auto: g.auto !== false,
             thresholds: thresholds.length ? thresholds : d.ghosts.thresholds
         }
     };
+}
+
+// Respuestas de la entrevista: solo preguntas de la lista, sin repetir, texto corto
+function cleanAnswers(answers) {
+    if (!Array.isArray(answers)) return [];
+    const seen = new Set();
+    return answers
+        .map(x => ({ q: String(x?.q ?? ''), a: cleanText(x?.a, 120) }))
+        .filter(x => INTERVIEW_QUESTIONS.includes(x.q) && x.a && !seen.has(x.q) && seen.add(x.q))
+        .slice(0, INTERVIEW_COUNT);
+}
+
+// Minuto local (0-1439) de una fecha en una zona horaria
+function localMinutes(date, timezone) {
+    return minutesInTimezone(date, timezone);
+}
+
+// ¿Ha dado el reloj local la hora «HH:MM» entre since (excluido) y now (incluido)?
+function crossedTime(since, now, hhmm, timezone) {
+    const elapsed = (now - since) / 60000;
+    if (elapsed <= 0) return false;
+    if (elapsed >= 1440) return true;
+    const [h, m] = hhmm.split(':').map(Number);
+    let delta = (h * 60 + m - localMinutes(since, timezone)) % 1440;
+    if (delta <= 0) delta += 1440;
+    return delta <= elapsed;
 }
 
 function autoTraitorCount(players) {
@@ -220,7 +290,14 @@ function createState(config = {}, tests = []) {
         ghosts: { skulls: 0, today: null, history: [] }, // today: { day, targetId, votes, eliminated, skulls }
         chat: { general: [], traitors: [], dead: [] },
         inbox: {}, // mensajes privados del MC por jugador
-        conclaveOverride: false
+        conclaveOverride: false,
+        shields: {}, // jugadorId -> día en que su escudo le protege esa noche
+        endgame: null, // { votes: { jugadorId: 'end' | 'banish' } } durante el final
+        endgameRound: false, // la mesa redonda actual es un destierro extra del final
+        quiz: null, // ronda de «¿Quién dijo qué?»
+        quizUsed: [], // respuestas ya preguntadas («jugadorId:índice»)
+        phaseKey: null, phaseSince: null, // para el horario automático
+        recorded: false // resultado ya guardado en la tabla de ganadores
     };
 }
 
@@ -228,7 +305,8 @@ function createState(config = {}, tests = []) {
 
 class Game {
     constructor(state, now = () => new Date(), random = Math.random) {
-        this.state = state;
+        // Las partidas guardadas con versiones anteriores reciben los campos nuevos con su valor inicial
+        this.state = { ...createState(), ...state, config: normalizeConfig(state.config) };
         this.now = now;
         this.random = random;
     }
@@ -287,7 +365,7 @@ class Game {
 
     // ----- Sala de espera -----
 
-    addPlayer({ name, photo }) {
+    addPlayer({ name, photo, wantsTraitor, answers }) {
         this.requirePhase('lobby');
         const cleanName = cleanText(name, 24);
         if (!cleanName) throw new GameError('Introduce tu nombre');
@@ -298,7 +376,9 @@ class Game {
         if (photo) this.validatePhoto(photo);
         const player = {
             id: uuid(), name: cleanName, photo: photo || null, photoVersion: photo ? 1 : 0,
-            role: null, alive: true, eliminatedBy: null, eliminatedDay: null
+            role: null, alive: true, eliminatedBy: null, eliminatedDay: null,
+            wantsTraitor: ['yes', 'maybe', 'no'].includes(wantsTraitor) ? wantsTraitor : 'maybe',
+            answers: cleanAnswers(answers)
         };
         this.state.players.push(player);
         return player;
@@ -315,7 +395,12 @@ class Game {
             if (added.length >= count || this.state.players.length >= 40) break;
             const name = `🤖 ${base}`;
             if (this.state.players.some(p => p.name === name)) continue;
-            const p = this.addPlayer({ name });
+            const qs = [...INTERVIEW_QUESTIONS].sort(() => this.random() - 0.5).slice(0, INTERVIEW_COUNT);
+            const p = this.addPlayer({
+                name,
+                wantsTraitor: ['yes', 'maybe', 'no'][Math.floor(this.random() * 3)],
+                answers: qs.map((q, i) => ({ q, a: `${BOT_ANSWERS[Math.floor(this.random() * BOT_ANSWERS.length)]} (${base})`.slice(0, 120) || `Respuesta ${i + 1}` }))
+            });
             p.bot = true;
             added.push(p);
         }
@@ -366,6 +451,22 @@ class Game {
                 changed = true;
             }
         }
+
+        if (s.phase === 'endgame' && this.config.voting === 'app') {
+            for (const b of bots()) {
+                if (this.state.phase !== 'endgame' || this.state.endgame.votes[b.id]) continue;
+                this.endgameVote(b.id, this.random() < 0.6 ? 'end' : 'banish');
+                changed = true;
+            }
+        }
+
+        const q = this.state.quiz;
+        if (q && !q.revealed) {
+            bots().filter(b => b.id !== q.authorId && !q.guesses[b.id]).forEach(b => {
+                q.guesses[b.id] = pick(this.state.players.filter(p => p.id !== b.id)).id;
+                changed = true;
+            });
+        }
         return changed;
     }
 
@@ -398,13 +499,17 @@ class Game {
         if (players.length < MIN_PLAYERS) throw new GameError(`Se necesitan al menos ${MIN_PLAYERS} jugadores`);
         const count = this.config.traitorCount || autoTraitorCount(players.length);
         if (count * 2 >= players.length) throw new GameError('Demasiados traidores para tan pocos jugadores');
-        // Fisher-Yates: reparto uniforme
-        const ids = players.map(p => p.id);
-        for (let i = ids.length - 1; i > 0; i--) {
-            const j = Math.floor(this.random() * (i + 1));
-            [ids[i], ids[j]] = [ids[j], ids[i]];
+        // Sorteo sin reemplazo con papeletas: quien quiere ser Felón tiene más, quien no quiere
+        // tiene menos, pero nadie queda descartado (así nadie puede presumir de ser Fiel seguro)
+        const pool = players.map(p => ({ id: p.id, w: TRAITOR_WEIGHT[p.wantsTraitor] || TRAITOR_WEIGHT.maybe }));
+        const traitorIds = new Set();
+        while (traitorIds.size < count) {
+            const total = pool.reduce((sum, x) => sum + x.w, 0);
+            let r = this.random() * total;
+            const i = pool.findIndex(x => (r -= x.w) < 0);
+            const [chosen] = pool.splice(i === -1 ? pool.length - 1 : i, 1);
+            traitorIds.add(chosen.id);
         }
-        const traitorIds = new Set(ids.slice(0, count));
         players.forEach(p => {
             p.role = traitorIds.has(p.id) ? 'traitor' : 'loyal';
             p.alive = true;
@@ -445,9 +550,13 @@ class Game {
                 // Terminar la mesa redonda: la votación abierta se descarta
                 if (s.round) this.log('skip', 'El MC cierra la mesa redonda sin más destierros');
                 s.round = null;
+                if (s.endgameRound) { s.endgameRound = false; return this.startEndgame(); }
                 return this.afterRoundtable();
             case 'night':
                 return this.dawn();
+            case 'endgame':
+                // El MC da por terminada la partida
+                return this.finish();
             default:
                 throw new GameError('La partida ha terminado');
         }
@@ -456,7 +565,7 @@ class Game {
     afterRoundtable() {
         const s = this.state;
         this.finalizeGhostDay();
-        if (this.isLastDay()) return this.finish();
+        if (this.isLastDay()) return this.config.endgame && this.alive().length > 2 ? this.startEndgame() : this.finish();
         s.phase = 'night';
         s.nightVotes = {};
         s.nightOverride = null;
@@ -469,6 +578,7 @@ class Game {
         const killsTonight = this.today().conclave;
         if (s.invitation.status === 'pending') s.invitation.status = 'expired';
         const victims = this.computeNightVictims();
+        s.shields = {}; // el escudo solo vale una noche
         s.day += 1;
         s.phase = 'day';
         s.roundsDone = 0;
@@ -608,7 +718,173 @@ class Game {
         } else {
             this.log('novote', reason, tally ? { tally } : {});
         }
+        // Destierro extra del final: se vuelve a votar si acabar o seguir
+        if (s.endgameRound) {
+            s.endgameRound = false;
+            return this.alive().length <= 2 ? this.finish() : this.startEndgame();
+        }
         if (s.roundsDone < this.today().roundtable) this.startRound();
+    }
+
+    // ----- Final («End Game») -----
+    // Tras el último día los supervivientes votan: acabar (si creen que no quedan Felones)
+    // o desterrar a alguien más. Solo se acaba por unanimidad o cuando quedan dos.
+
+    startEndgame() {
+        const s = this.state;
+        s.phase = 'endgame';
+        s.round = null;
+        s.endgame = { votes: {} };
+        this.log('endgame', 'Final: los supervivientes deciden si acabar o desterrar a alguien más');
+    }
+
+    endgameVote(playerId, choice) {
+        const s = this.state;
+        this.requirePhase('endgame');
+        if (this.config.voting !== 'app') throw new GameError('En esta partida se decide en persona');
+        this.requirePlayer(playerId);
+        if (!['end', 'banish'].includes(choice)) throw new GameError('Opción no válida');
+        if (s.endgame.votes[playerId]) throw new GameError('Tu decisión ya está registrada');
+        s.endgame.votes[playerId] = choice;
+        if (this.alive().every(p => s.endgame.votes[p.id])) this.decideEndgame();
+    }
+
+    // Con todos los votos (o el MC, si se decide en persona): acabar si es unánime
+    decideEndgame(choice) {
+        const s = this.state;
+        this.requirePhase('endgame');
+        const unanimous = choice ? choice === 'end' : this.alive().every(p => s.endgame.votes[p.id] === 'end');
+        if (unanimous || this.alive().length <= 2) return this.finish();
+        this.log('endgame-continue', 'No hay unanimidad: se destierra a alguien más');
+        s.endgame = null;
+        s.phase = 'roundtable';
+        s.endgameRound = true;
+        s.roundsDone = 0;
+        this.startRound();
+    }
+
+    // ----- Escudo -----
+    // Lo da el MC (normalmente a quien gana una prueba). Protege del asesinato esa noche;
+    // los Felones no saben quién lo tiene.
+
+    grantShield(playerId, on = true) {
+        const s = this.state;
+        this.requirePhase('day', 'roundtable', 'night');
+        const p = this.requirePlayer(playerId);
+        if (on) s.shields[p.id] = s.day; else delete s.shields[p.id];
+        return p;
+    }
+
+    // ----- Horario automático -----
+
+    // Anota cuándo empezó la fase actual (el horario cuenta desde ahí)
+    trackPhase() {
+        const s = this.state;
+        const key = `${s.phase}:${s.day}:${s.endgameRound ? 'e' : ''}`;
+        if (s.phaseKey !== key) {
+            s.phaseKey = key;
+            s.phaseSince = this.now().toISOString();
+            return true;
+        }
+        return false;
+    }
+
+    setTimetable(input) {
+        const tt = normalizeConfig({ ...this.config, timetable: { ...this.config.timetable, ...input } }).timetable;
+        this.state.config.timetable = tt;
+        if (tt.enabled) { this.state.phaseKey = null; this.trackPhase(); }
+        return tt;
+    }
+
+    // Avanza la partida si ha llegado la hora de la siguiente fase. Devuelve true si cambia algo.
+    autoStep() {
+        const s = this.state;
+        const tt = this.config.timetable;
+        this.trackPhase();
+        if (!tt.enabled || !['day', 'roundtable', 'night'].includes(s.phase)) return false;
+        const since = new Date(s.phaseSince);
+        const now = this.now();
+        const due = hhmm => crossedTime(since, now, hhmm, this.config.timezone);
+        if (s.phase === 'day' && due(tt.roundtable)) {
+            this.advance();
+        } else if (s.phase === 'roundtable' && due(tt.night)) {
+            // Se cuentan los votos que haya antes de cerrar la mesa
+            if (s.round && this.config.voting === 'app' && Object.keys(s.round.votes).length) this.resolveRound();
+            if (this.state.phase === 'roundtable') this.advance();
+        } else if (s.phase === 'night' && due(tt.dawn)) {
+            this.advance();
+        } else {
+            return false;
+        }
+        this.trackPhase();
+        return true;
+    }
+
+    // ----- ¿Quién dijo qué? -----
+    // El MC saca una respuesta de la entrevista; los demás adivinan de quién es.
+    // Cada acierto suma oro a la prueba «¿Quién dijo qué?».
+
+    quizNext() {
+        const s = this.state;
+        if (s.phase === 'lobby' || s.phase === 'end') throw new GameError('Ahora no se puede hacer eso');
+        const pool = [];
+        s.players.forEach(p => (p.answers || []).forEach((x, i) => {
+            if (!s.quizUsed.includes(`${p.id}:${i}`)) pool.push({ p, x, key: `${p.id}:${i}` });
+        }));
+        if (pool.length === 0) throw new GameError('No quedan respuestas de la entrevista');
+        const pick = pool[Math.floor(this.random() * pool.length)];
+        s.quizUsed.push(pick.key);
+        let test = s.tests.find(t => t.quiz);
+        if (!test) {
+            test = this.addTest({ name: '¿Quién dijo qué?', description: 'Adivina de quién es cada respuesta de la entrevista.' });
+            test.quiz = true;
+        }
+        test.status = 'active';
+        s.spotlight = null;
+        s.quiz = { id: uuid(), question: pick.x.q, answer: pick.x.a, authorId: pick.p.id, guesses: {}, revealed: false, testId: test.id };
+        return s.quiz;
+    }
+
+    quizGuess(playerId, authorId) {
+        const q = this.state.quiz;
+        if (!q || q.revealed) throw new GameError('No hay ninguna pregunta abierta');
+        const p = this.requirePlayer(playerId);
+        if (p.id === q.authorId) throw new GameError('Esta respuesta es tuya: no puedes adivinar');
+        if (!this.getPlayer(authorId)) throw new GameError('Jugador no válido');
+        q.guesses[p.id] = authorId;
+    }
+
+    quizReveal() {
+        const q = this.state.quiz;
+        if (!q || q.revealed) throw new GameError('No hay ninguna pregunta abierta');
+        q.revealed = true;
+        q.correct = Object.keys(q.guesses).filter(id => q.guesses[id] === q.authorId);
+        const gold = q.correct.length * this.config.quizGold;
+        const test = this.state.tests.find(t => t.id === q.testId);
+        if (test) { test.score = (test.score || 0) + gold; test.status = 'done'; }
+        q.gold = gold;
+        return q;
+    }
+
+    quizClose() { this.state.quiz = null; }
+
+    // ----- Resultado -----
+    // Bote final (lo que no se llevan los Fantasmas) repartido entre los ganadores vivos
+    results() {
+        const s = this.state;
+        if (s.phase !== 'end') return null;
+        const stolen = this.config.ghosts.enabled ? this.ghostSummary().stolen : 0;
+        const pot = Math.max(0, this.treasure() - stolen);
+        const winners = this.alive().filter(p => p.role === s.winner);
+        const share = winners.length ? Math.floor(pot / winners.length) : 0;
+        return {
+            winner: s.winner,
+            pot,
+            players: s.players.map(p => ({
+                name: p.name, bot: !!p.bot, role: p.role, alive: p.alive,
+                won: p.alive && p.role === s.winner, gold: p.alive && p.role === s.winner ? share : 0
+            }))
+        };
     }
 
     // ----- Sospechas nocturnas -----
@@ -680,7 +956,8 @@ class Game {
             .sort((a, b) => b.votes - a.votes || a.tiebreak - b.tiebreak)
             .slice(0, kills)
             .map(x => this.getPlayer(x.id))
-            .filter(p => p?.alive && p.role !== 'traitor');
+            // El escudo frena el asesinato: esa muerte no se sustituye por otra
+            .filter(p => p?.alive && p.role !== 'traitor' && s.shields[p.id] !== s.day);
     }
 
     invite(traitorId, targetId) {
@@ -912,6 +1189,25 @@ class Game {
             maxTreasure: s.tests.reduce((sum, t) => sum + t.max, 0),
             events: s.events.slice(-30),
             winner: s.winner,
+            mode: c.mode,
+            endgameEnabled: c.endgame,
+            timetable: c.timetable,
+            phaseSince: s.phaseSince,
+            endgame: s.endgame && { voters: Object.keys(s.endgame.votes) },
+            endgameRound: !!s.endgameRound,
+            quiz: s.quiz && {
+                id: s.quiz.id,
+                question: s.quiz.question,
+                answer: s.quiz.answer,
+                revealed: s.quiz.revealed,
+                guessers: Object.keys(s.quiz.guesses),
+                authorId: s.quiz.revealed ? s.quiz.authorId : undefined,
+                correct: s.quiz.revealed ? s.quiz.correct : undefined,
+                gold: s.quiz.revealed ? s.quiz.gold : undefined
+            },
+            questions: s.phase === 'lobby' ? INTERVIEW_QUESTIONS : undefined,
+            interviewCount: INTERVIEW_COUNT,
+            results: ended ? this.results() : undefined,
             // Los Fantasmas son secretos: solo se revelan al terminar
             ghosts: ended && c.ghosts.enabled ? this.ghostSummary() : undefined
         };
@@ -927,7 +1223,13 @@ class Game {
             myVote: s.round?.votes[p.id] || null,
             invitationPending: s.invitation.status === 'pending' && s.invitation.targetId === p.id,
             mySuspect: (s.suspicions || {})[p.id] || null,
-            inbox: s.inbox[p.id] || []
+            inbox: s.inbox[p.id] || [],
+            hasShield: s.shields[p.id] === s.day && p.alive,
+            myEndgame: s.endgame?.votes[p.id] || null,
+            myQuizGuess: s.quiz?.guesses[p.id] || null,
+            quizIsMine: !!s.quiz && !s.quiz.revealed && s.quiz.authorId === p.id,
+            wantsTraitor: p.wantsTraitor,
+            answers: p.answers || []
         };
         if (p.role === 'traitor') {
             view.allies = s.players.filter(x => x.role === 'traitor').map(x => ({ id: x.id, name: x.name, alive: x.alive }));
@@ -965,7 +1267,11 @@ class Game {
             conclaveOverride: s.conclaveOverride,
             ghosts: this.ghostSummary(),
             aliveCounts: { traitor: this.aliveTraitors().length, loyal: this.aliveLoyals().length },
-            inbox: s.inbox
+            inbox: s.inbox,
+            shields: Object.keys(s.shields).filter(id => s.shields[id] === s.day),
+            endgameVotes: s.endgame ? s.endgame.votes : {},
+            quizFull: s.quiz,
+            quizLeft: s.players.reduce((n, p) => n + (p.answers || []).length, 0) - s.quizUsed.length
         };
     }
 }
@@ -982,5 +1288,7 @@ module.exports = {
     autoTraitorCount,
     PRESETS,
     DEFAULT_CONFIG,
-    MIN_PLAYERS
+    MIN_PLAYERS,
+    INTERVIEW_QUESTIONS,
+    crossedTime
 };

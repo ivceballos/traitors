@@ -38,6 +38,15 @@ const RoomModel = mongoose.model('Room', new mongoose.Schema({
     updatedAt: Date
 }, { minimize: false }));
 
+// Tabla de ganadores: un documento por partida terminada (sin bots)
+const ResultModel = mongoose.model('Result', new mongoose.Schema({
+    code: { type: String, index: true },
+    finishedAt: Date,
+    winner: String,
+    players: [{ name: String, role: String, won: Boolean, gold: Number }]
+}));
+const memoryResults = []; // sin base de datos
+
 mongoose.set('bufferCommands', false); // sin BD, fallar rápido en vez de colgarse
 
 const rooms = new Map(); // code -> { code, game, mcHash, rev, saving, saveQueued, knownDead }
@@ -88,7 +97,7 @@ async function syncRoom(room, { force = false } = {}) {
         if (!head || (!force && (head.rev || 0) <= room.rev)) return false;
         const doc = await RoomModel.findOne({ code: room.code }).lean();
         if (!doc || (!force && (doc.rev || 0) <= room.rev)) return false;
-        room.game.state = doc.state;
+        room.game.state = new Game(doc.state).state; // completa campos de versiones anteriores
         room.mcHash = doc.mcHash;
         room.rev = doc.rev || 0;
         return true;
@@ -162,8 +171,26 @@ function chatHistoryFor(game, playerId) {
     };
 }
 
+// Al terminar una partida se guarda una sola vez en la tabla de ganadores
+async function recordResults(room) {
+    const { game, code } = room;
+    if (game.state.phase !== 'end' || game.state.recorded) return;
+    game.state.recorded = true;
+    const r = game.results();
+    const players = r.players.filter(p => !p.bot).map(({ name, role, won, gold }) => ({ name, role, won, gold }));
+    if (players.length === 0) return;
+    const doc = { code, finishedAt: new Date(), winner: r.winner, players };
+    try {
+        if (dbReady()) await ResultModel.create(doc); else memoryResults.push(doc);
+    } catch (err) {
+        console.error(`Sala ${code}: no se pudo guardar el resultado`, err.message);
+    }
+}
+
 function broadcast(room, { save = true } = {}) {
     const { code, game } = room;
+    game.trackPhase();
+    if (game.state.phase === 'end' && !game.state.recorded) recordResults(room);
     io.to(pubRoom(code)).emit('state', game.publicView(code));
     game.state.players.forEach(p => io.to(playerRoom(code, p.id)).emit('private', game.privateView(p.id)));
     io.to(mcRoom(code)).emit('master-state', game.masterView(code));
@@ -224,6 +251,29 @@ const signMaster = code => jwt.sign({ r: code, mc: true }, JWT_SECRET);
 // ---------- HTTP ----------
 
 app.get('/health', (_req, res) => res.json({ ok: true, rooms: rooms.size, db: dbReady() }));
+
+// Tabla de ganadores: victorias y oro acumulado por nombre
+app.get('/api/leaderboard', async (_req, res) => {
+    try {
+        const results = dbReady() ? await ResultModel.find({}).sort({ finishedAt: -1 }).limit(500).lean() : memoryResults;
+        const table = new Map();
+        results.forEach(r => r.players.forEach(p => {
+            const key = p.name.trim().toLowerCase();
+            const row = table.get(key) || { name: p.name, games: 0, wins: 0, loyalWins: 0, traitorWins: 0, gold: 0 };
+            row.games += 1;
+            if (p.won) {
+                row.wins += 1;
+                if (p.role === 'traitor') row.traitorWins += 1; else row.loyalWins += 1;
+            }
+            row.gold += p.gold || 0;
+            table.set(key, row);
+        }));
+        const rows = [...table.values()].sort((a, b) => b.gold - a.gold || b.wins - a.wins);
+        res.json({ rows, games: results.length });
+    } catch (err) {
+        res.status(500).json({ error: 'No se pudo leer la tabla de ganadores' });
+    }
+});
 
 app.get('/api/presets', (_req, res) => res.json({ defaults: DEFAULT_CONFIG, presets: PRESETS }));
 
@@ -332,9 +382,9 @@ io.on('connection', (socket) => {
         return bindPlayer(room, claims.p);
     });
 
-    on('player:join', async ({ code, name, photo }) => {
+    on('player:join', async ({ code, name, photo, wantsTraitor, answers }) => {
         const room = await requireRoom(code);
-        const player = room.game.addPlayer({ name, photo });
+        const player = room.game.addPlayer({ name, photo, wantsTraitor, answers });
         const session = bindPlayer(room, player.id);
         broadcast(room);
         return session;
@@ -393,6 +443,18 @@ io.on('connection', (socket) => {
         broadcast(room);
     });
 
+    on('endgame-vote', async ({ choice }) => {
+        const { room, game, id } = await asPlayer();
+        game.endgameVote(id, choice);
+        broadcast(room);
+    });
+
+    on('quiz-guess', async ({ authorId }) => {
+        const { room, game, id } = await asPlayer();
+        game.quizGuess(id, authorId);
+        broadcast(room);
+    });
+
     on('chat', async ({ channel, message }) => {
         const { room, game, id } = await asPlayer();
         emitChat(room, game.addChat(id, channel, message));
@@ -423,6 +485,13 @@ io.on('connection', (socket) => {
     master('mc:night-victims', ({ game }, { ids }) => game.setNightVictims(ids));
     master('mc:conclave-override', ({ game }, { value }) => { game.state.conclaveOverride = !!value; });
     master('mc:config', ({ game }, { config }) => game.updateConfig(config || {}));
+    master('mc:shield', ({ game }, { playerId, on }) => { game.grantShield(playerId, on !== false); });
+    master('mc:endgame-decide', ({ game }, { choice }) => game.decideEndgame(choice === 'end' ? 'end' : 'banish'));
+    master('mc:quiz-next', ({ game }) => { game.quizNext(); });
+    master('mc:quiz-reveal', ({ game }) => { game.quizReveal(); });
+    master('mc:quiz-close', ({ game }) => { game.quizClose(); });
+    // El horario automático se puede activar, pausar o cambiar en cualquier momento
+    master('mc:timetable', ({ game }, input) => { game.setTimetable(input || {}); });
     master('mc:add-bots', ({ game }, { count }) => { game.addBots(Math.min(20, Math.max(1, parseInt(count, 10) || 6))); });
     master('mc:kick', ({ room, game }, { playerId }) => {
         game.removePlayer(playerId);
@@ -466,6 +535,25 @@ setInterval(() => {
         if (await syncRoom(room)) refresh(room);
     });
 }, 3000);
+
+// Horario automático: cada 30 s se comprueba si toca pasar de fase. El MC puede seguir
+// avanzando a mano cuando quiera; el horario cuenta desde el inicio de cada fase.
+setInterval(() => {
+    rooms.forEach(room => {
+        try {
+            const before = room.game.state.phase;
+            if (!room.game.autoStep()) return;
+            if (before === 'night' && room.game.state.ghosts.today) {
+                const target = room.game.getPlayer(room.game.state.ghosts.today.targetId);
+                notice(room, room.game.dead().map(p => p.id), `💀 Objetivo de hoy: ${target.name}`);
+            }
+            io.to(pubRoom(room.code)).emit('notice', 'Ha llegado la hora: empieza una nueva fase');
+            broadcast(room);
+        } catch (err) {
+            console.error(`Sala ${room.code}: error en el horario automático`, err.message);
+        }
+    });
+}, 30 * 1000);
 
 // El servidor principal mantiene despierto al de reserva (Render gratis se duerme a los 15 min)
 if (process.env.KEEPALIVE_URL) {

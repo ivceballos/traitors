@@ -76,6 +76,8 @@ test('calendario Fieles y Felones: 12 → 10 → 6 → 5', () => {
     g.advance();
     g.banish(victims.shift().id, { targetVotes: 0 });
     g.advance();
+    assert.strictEqual(g.state.phase, 'endgame', 'tras el último día llega el final');
+    g.decideEndgame('end'); // en persona: el MC registra que deciden acabar
     assert.strictEqual(g.state.phase, 'end');
     assert.strictEqual(g.alive().length, 5);
     assert.strictEqual(g.state.winner, 'traitor', 'si queda algún traidor al final, ganan ellos');
