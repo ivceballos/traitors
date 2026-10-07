@@ -1,151 +1,266 @@
 const test = require('node:test');
 const assert = require('node:assert');
-const { Game, GameError, isConclaveTime } = require('./game');
+const { Game, GameError, createState, normalizeConfig, ghostLootPercent, isWithinHours, PRESETS } = require('./game');
 
-function setup(n = 7) {
-    const g = new Game();
-    g.state.ignoreConclaveHours = true;
+// Partida de n jugadores ya empezada, con reparto determinista
+function setup(n = 12, config = {}, tests = []) {
+    const g = new Game(createState(config, tests), () => new Date(), () => 0);
     for (let i = 0; i < n; i++) g.addPlayer({ name: `P${i}` });
-    g.start(() => 0); // reparto determinista
-    const traitors = g.state.players.filter(p => p.role === 'traidor');
-    const faithfuls = g.state.players.filter(p => p.role === 'fiel');
-    return { g, traitors, faithfuls };
+    g.start();
+    const traitors = g.state.players.filter(p => p.role === 'traitor');
+    const loyals = g.state.players.filter(p => p.role === 'loyal');
+    return { g, traitors, loyals };
 }
 
-test('reparte 2 traidores con 6+ jugadores y 1 con menos', () => {
-    assert.strictEqual(setup(7).traitors.length, 2);
+const voteAll = (g, targetId, exceptId) =>
+    g.alive().forEach(p => { if (g.state.round) g.vote(p.id, p.id === targetId ? exceptId : targetId); });
+
+test('configuración: valores por defecto, límites y calendario', () => {
+    const c = normalizeConfig({ days: 3, schedule: [{ roundtable: 9, conclave: 1 }], voting: 'x' });
+    assert.strictEqual(c.days, 3);
+    assert.strictEqual(c.schedule.length, 3);
+    assert.strictEqual(c.schedule[0].roundtable, 5, 'se limita a 5');
+    assert.strictEqual(c.schedule[2].conclave, 0, 'la última noche no se juega');
+    assert.strictEqual(c.voting, 'app');
+    assert.deepStrictEqual(normalizeConfig({ ghosts: { thresholds: [{ skulls: 30, percent: 100 }, { skulls: 10, percent: 50 }] } })
+        .ghosts.thresholds.map(t => t.skulls), [10, 30]);
+});
+
+test('reparto: automático (3 traidores con 12) o fijado por el MC', () => {
+    assert.strictEqual(setup(12).traitors.length, 3);
     assert.strictEqual(setup(5).traitors.length, 1);
+    assert.strictEqual(setup(8, { traitorCount: 3 }).traitors.length, 3);
+    const g = new Game(createState({ traitorCount: 2 }));
+    ['A', 'B', 'C', 'D'].forEach(name => g.addPlayer({ name }));
+    assert.throws(() => g.start(), /Demasiados traidores/);
 });
 
-test('no se puede empezar con menos de 4 ni unirse tras empezar', () => {
-    const g = new Game();
-    ['A', 'B', 'C'].forEach(name => g.addPlayer({ name }));
-    assert.throws(() => g.start(), GameError);
-    g.addPlayer({ name: 'D' });
-    g.start();
-    assert.throws(() => g.addPlayer({ name: 'E' }), /ya ha comenzado/);
-});
-
-test('nombres duplicados y fotos no válidas se rechazan', () => {
-    const g = new Game();
+test('sala de espera: nombres únicos, fotos validadas, no se entra tras empezar', () => {
+    const g = new Game(createState());
     g.addPlayer({ name: 'Ana' });
     assert.throws(() => g.addPlayer({ name: 'ana' }), /en uso/);
-    assert.throws(() => g.addPlayer({ name: 'Luis', photo: 'javascript:alert(1)' }), /foto/);
+    assert.throws(() => g.addPlayer({ name: 'Luis', photo: 'http://x/y.jpg' }), /Foto/);
+    g.addPlayer({ name: 'Luis', photo: 'data:image/jpeg;base64,AAAA' });
+    ['B', 'C'].forEach(name => g.addPlayer({ name }));
+    g.start();
+    assert.throws(() => g.addPlayer({ name: 'Tarde' }), GameError);
 });
 
-test('la vista pública no revela roles de jugadores vivos', () => {
-    const { g } = setup();
-    const view = g.publicView();
-    assert.ok(view.players.every(p => p.role === undefined));
-    assert.ok(!JSON.stringify(view).includes('traidor'));
-});
-
-test('flujo completo: invitación, asesinato, votación y fin al día 4', () => {
-    const { g, traitors, faithfuls } = setup(8);
-    // Día 1: día -> noche, sin asesinato pero con invitación
-    g.advance();
+test('calendario Fieles y Felones: 12 → 10 → 6 → 5', () => {
+    const preset = PRESETS['fieles-felones'];
+    const { g, loyals } = setup(12, { ...preset.config, traitorCount: 2 }, preset.tests);
+    assert.strictEqual(g.state.tests.length, 7);
+    g.advance(); // día 1 sin mesa -> noche
     assert.strictEqual(g.state.phase, 'night');
-    assert.throws(() => g.nightKill(traitors[0].id, faithfuls[0].id), /primer día/);
-    g.invite(traitors[0].id, faithfuls[0].id);
-    assert.throws(() => g.invite(traitors[1].id, faithfuls[1].id), /invitación/);
-    g.respondInvitation(faithfuls[0].id, true);
-    assert.strictEqual(g.getPlayer(faithfuls[0].id).role, 'traidor');
-
-    // Día 2: amanecer sin víctima -> mesa redonda
+    g.advance(); // amanecer día 2 sin asesinatos
+    assert.strictEqual(g.alive().length, 12);
+    const victims = [...loyals];
+    // Día 2: 1 mesa + 1 cónclave
     g.advance();
-    assert.strictEqual(g.state.gameDay, 2);
-    assert.strictEqual(g.state.lastNightVictim, null);
+    g.banish(victims.shift().id);
+    assert.strictEqual(g.state.round, null, 'solo una votación el día 2');
+    g.advance(); // noche
+    g.setNightVictims([victims.shift().id]);
     g.advance();
-    assert.strictEqual(g.state.phase, 'roundtable');
-    // Todos votan a un fiel -> se resuelve solo y pasa a la noche
-    const target = faithfuls[1].id;
-    g.alive().forEach(p => { if (p.id !== target) g.vote(p.id, target); });
-    g.vote(target, faithfuls[2].id);
-    assert.strictEqual(g.state.phase, 'night');
-    assert.strictEqual(g.getPlayer(target).alive, false);
-    assert.strictEqual(g.getPlayer(target).eliminatedBy, 'banished');
-
-    // Noche 2: asesinato revelado al amanecer
-    g.nightKill(traitors[0].id, faithfuls[2].id);
-    assert.strictEqual(g.getPlayer(faithfuls[2].id).alive, true, 'no se revela hasta el amanecer');
+    assert.strictEqual(g.alive().length, 10);
+    // Día 3: 2 mesas + 2 cónclave
     g.advance();
-    assert.strictEqual(g.state.lastNightVictim, faithfuls[2].id);
-    assert.strictEqual(g.getPlayer(faithfuls[2].id).alive, false);
-});
-
-test('empate en la votación: nadie es desterrado', () => {
-    const { g, faithfuls } = setup(6);
-    g.advance(); g.advance(); g.advance(); // noche 1 -> día 2 -> mesa redonda
-    g.vote(faithfuls[0].id, faithfuls[1].id);
-    g.vote(faithfuls[1].id, faithfuls[0].id);
-    g.advance(); // el MC cierra la votación
-    assert.ok(g.state.lastVoteResult.tie);
+    g.banish(victims.shift().id);
+    assert.ok(g.state.round, 'segunda votación abierta automáticamente');
+    g.banish(victims.shift().id);
+    g.advance();
+    g.setNightVictims([victims.shift().id, victims.shift().id]);
+    g.advance();
     assert.strictEqual(g.alive().length, 6);
-    assert.strictEqual(g.state.phase, 'night');
-});
-
-test('no se puede votar a uno mismo ni votar estando muerto', () => {
-    const { g, faithfuls } = setup(6);
-    g.advance(); g.advance(); g.advance();
-    assert.throws(() => g.vote(faithfuls[0].id, faithfuls[0].id), /ti mismo/);
-    g.getPlayer(faithfuls[1].id).alive = false;
-    assert.throws(() => g.vote(faithfuls[1].id, faithfuls[0].id), /eliminado/);
-});
-
-test('ganan los fieles al desterrar al último traidor', () => {
-    const { g, traitors } = setup(5);
-    g.advance(); g.advance(); g.advance();
-    g.alive().forEach(p => g.vote(p.id, p.id === traitors[0].id ? g.alive().find(x => x.id !== p.id).id : traitors[0].id));
-    assert.strictEqual(g.state.phase, 'gameover');
-    assert.strictEqual(g.state.winner, 'FIELES');
-});
-
-test('si queda algún traidor al terminar el día 4, ganan los traidores', () => {
-    const { g } = setup(10);
-    g.advance(); // noche 1
-    g.advance(); // día 2
-    for (let day = 2; day <= 4; day++) {
-        g.advance(); // mesa redonda
-        g.advance(); // cerrar sin votos
-        if (day < 4) g.advance(); // amanecer
-    }
-    assert.strictEqual(g.state.phase, 'gameover');
-    assert.strictEqual(g.state.winner, 'TRAIDORES');
-});
-
-test('chat de traidores: solo traidores y solo con el cónclave abierto', () => {
-    const { g, traitors, faithfuls } = setup(6);
-    assert.throws(() => g.addChat(traitors[0].id, 'traitors', 'hola'), /noche/);
+    // Día 4: 1 mesa y final
     g.advance();
-    assert.throws(() => g.addChat(faithfuls[0].id, 'traitors', 'hola'), /acceso/);
-    g.state.ignoreConclaveHours = false;
-    const msg = isConclaveTime() ? null : /cónclave/;
-    if (msg) assert.throws(() => g.addChat(traitors[0].id, 'traitors', 'hola'), msg);
-    g.state.ignoreConclaveHours = true;
+    g.banish(victims.shift().id);
+    g.advance();
+    assert.strictEqual(g.state.phase, 'end');
+    assert.strictEqual(g.alive().length, 5);
+    assert.strictEqual(g.state.winner, 'traitor', 'si queda algún traidor al final, ganan ellos');
+});
+
+test('votación en la app: se resuelve sola y revela el rol', () => {
+    const { g, loyals, traitors } = setup(8);
+    g.advance(); g.advance(); g.advance(); // noche 1 -> día 2 -> mesa
+    voteAll(g, traitors[0].id, loyals[0].id);
+    assert.strictEqual(g.getPlayer(traitors[0].id).alive, false);
+    assert.strictEqual(g.publicView('X').players.find(p => p.id === traitors[0].id).role, 'traitor');
+});
+
+test('empate: nueva votación solo entre empatados', () => {
+    const { g, loyals } = setup(6);
+    g.advance(); g.advance(); g.advance();
+    const [a, b] = loyals;
+    g.alive().forEach((p, i) => g.vote(p.id, p.id === a.id ? b.id : p.id === b.id ? a.id : (i % 2 ? a.id : b.id)));
+    assert.deepStrictEqual([...g.state.round.candidates].sort(), [a.id, b.id].sort());
+    assert.throws(() => g.vote(loyals[2].id, loyals[3].id), /empatados/);
+    g.alive().forEach(p => g.vote(p.id, p.id === a.id ? b.id : a.id));
+    assert.strictEqual(g.getPlayer(a.id).alive, false);
+});
+
+test('empate con regla "nadie": no se destierra a nadie', () => {
+    const { g, loyals } = setup(6, { tieRule: 'none' });
+    g.advance(); g.advance(); g.advance();
+    const [a, b] = loyals;
+    g.vote(a.id, b.id);
+    g.vote(b.id, a.id);
+    g.resolveRound();
+    assert.strictEqual(g.alive().length, 6);
+    assert.strictEqual(g.state.round, null);
+});
+
+test('votación en persona: no se vota en la app, el MC registra', () => {
+    const { g, loyals } = setup(8, { voting: 'inperson' });
+    g.advance(); g.advance(); g.advance();
+    assert.throws(() => g.vote(loyals[0].id, loyals[1].id), /en persona/);
+    g.banish(loyals[1].id);
+    assert.strictEqual(g.getPlayer(loyals[1].id).eliminatedBy, 'banish');
+});
+
+test('cónclave: los traidores votan víctimas y gana la más votada', () => {
+    const { g, traitors, loyals } = setup(10);
+    g.advance(); g.advance(); g.advance(); // mesa día 2
+    g.skipRound();
+    g.advance(); // noche 2
+    assert.throws(() => g.nightVote(loyals[0].id, [loyals[1].id]), /cónclave/);
+    assert.throws(() => g.nightVote(traitors[0].id, [traitors[1].id]), /no válida/);
+    g.nightVote(traitors[0].id, [loyals[1].id]);
+    g.nightVote(traitors[1].id, [loyals[1].id]);
+    assert.deepStrictEqual(g.nightTally(), { [loyals[1].id]: 2 });
+    g.advance();
+    assert.strictEqual(g.getPlayer(loyals[1].id).eliminatedBy, 'murder');
+});
+
+test('cónclave con horario: cerrado fuera de horas salvo que lo abra el MC', () => {
+    const tenAm = () => new Date('2026-10-07T08:00:00Z'); // 10:00 en Madrid
+    const g = new Game(createState({ conclaveHours: { start: '22:30', end: '03:00' } }), tenAm, () => 0);
+    ['A', 'B', 'C', 'D', 'E', 'F'].forEach(name => g.addPlayer({ name }));
+    g.start(); g.advance(); g.advance(); g.advance(); g.skipRound(); g.advance();
+    const traitor = g.aliveTraitors()[0];
+    const loyal = g.aliveLoyals()[0];
+    assert.throws(() => g.nightVote(traitor.id, [loyal.id]), /22:30/);
+    g.state.conclaveOverride = true;
+    g.nightVote(traitor.id, [loyal.id]);
+});
+
+test('horario cruzando la medianoche en hora de Madrid', () => {
+    const h = { start: '22:30', end: '03:00' };
+    assert.strictEqual(isWithinHours(h, 'Europe/Madrid', new Date('2026-10-07T20:29:00Z')), false);
+    assert.strictEqual(isWithinHours(h, 'Europe/Madrid', new Date('2026-10-07T20:30:00Z')), true);
+    assert.strictEqual(isWithinHours(h, 'Europe/Madrid', new Date('2026-10-08T01:00:00Z')), false);
+});
+
+test('reclutamiento la primera noche', () => {
+    const { g, traitors, loyals } = setup(10);
+    g.advance(); // noche 1
+    g.invite(traitors[0].id, loyals[0].id);
+    assert.throws(() => g.invite(traitors[1].id, loyals[1].id), /ya se ha usado/);
+    g.respondInvitation(loyals[0].id, true);
+    assert.strictEqual(g.getPlayer(loyals[0].id).role, 'traitor');
+    assert.strictEqual(g.privateView(traitors[0].id).allies.length, 3);
+});
+
+test('pruebas: se actualiza la prueba existente (sin duplicados) y el botín es la suma', () => {
+    const g = new Game(createState({}, [{ name: 'Llave o Muerte', max: 6000 }]));
+    const id = g.state.tests[0].id;
+    g.updateTest(id, { score: 4500 });
+    g.updateTest(id, { score: 5000 });
+    assert.strictEqual(g.state.tests.length, 1);
+    assert.strictEqual(g.treasure(), 5000);
+    assert.throws(() => g.updateTest(id, { score: 7000 }), /máxima/);
+    assert.throws(() => g.removeTest(id), /puntuada/);
+    g.addTest({ name: 'Aguas Tensas', max: 4000 });
+    assert.strictEqual(g.publicView('X').maxTreasure, 10000);
+});
+
+test('Fantasmas: umbrales configurables', () => {
+    const t = normalizeConfig({}).ghosts.thresholds;
+    assert.strictEqual(ghostLootPercent(17, t), 0);
+    assert.strictEqual(ghostLootPercent(18, t), 50);
+    assert.strictEqual(ghostLootPercent(26, t), 75);
+    assert.strictEqual(ghostLootPercent(40, t), 100);
+});
+
+test('Fantasmas: objetivo fiel, 1 calavera por voto y +2 si cae', () => {
+    const { g, loyals } = setup(10);
+    g.advance(); g.advance(); g.advance(); // mesa día 2
+    voteAll(g, loyals[0].id, loyals[1].id); // primer muerto: aún no hay fantasmas
+    assert.strictEqual(g.state.ghosts.history.length, 0);
+    g.advance(); g.advance(); // noche -> día 3 (ya hay fantasmas)
+    const target = g.state.ghosts.today.targetId;
+    assert.strictEqual(g.getPlayer(target).role, 'loyal');
+    g.advance(); // mesa
+    const other = g.alive().find(p => p.id !== target).id;
+    const voters = g.alive().length - 1; // todos menos el objetivo le votan
+    voteAll(g, target, other);
+    assert.strictEqual(g.getPlayer(target).alive, false);
+    assert.strictEqual(g.state.ghosts.skulls, voters * 1 + 2);
+});
+
+test('Fantasmas: en persona el MC indica los votos al objetivo', () => {
+    const { g } = setup(10, { voting: 'inperson' });
+    g.advance(); g.advance(); g.advance();
+    g.banish(g.aliveLoyals()[0].id);
+    g.advance(); g.advance(); g.advance();
+    const target = g.state.ghosts.today.targetId;
+    g.banish(g.aliveLoyals().find(p => p.id !== target).id, { targetVotes: 4 });
+    assert.strictEqual(g.state.ghosts.skulls, 4);
+});
+
+test('Fantasmas: el secreto solo lo ven los muertos y el MC hasta el final', () => {
+    const { g, loyals } = setup(10, {}, [{ name: 'X', max: 0 }]);
+    g.updateTest(g.state.tests[0].id, { score: 10000 });
+    g.getPlayer(loyals[0].id).alive = false;
+    g.assignGhostTarget();
+    g.state.ghosts.skulls = 26;
+    assert.strictEqual(g.publicView('X').ghosts, undefined);
+    assert.strictEqual(g.privateView(loyals[1].id).ghostSociety, undefined);
+    assert.strictEqual(g.privateView(loyals[0].id).ghostSociety.percent, 75);
+    assert.ok(g.masterView('X').ghosts.target);
+    g.finish();
+    assert.strictEqual(g.publicView('X').ghosts.stolen, 7500);
+});
+
+test('Fantasmas desactivados: sin objetivo ni panel', () => {
+    const { g, loyals } = setup(10, { ghosts: { enabled: false } });
+    g.getPlayer(loyals[0].id).alive = false;
+    assert.strictEqual(g.assignGhostTarget(), null);
+    assert.strictEqual(g.privateView(loyals[0].id).ghostSociety, undefined);
+});
+
+test('privacidad: la vista pública no revela roles ni votos del cónclave', () => {
+    const { g } = setup(8);
+    const view = JSON.stringify(g.publicView('X'));
+    assert.ok(!view.includes('"role":"traitor"') && !view.includes('"role":"loyal"'));
+    assert.ok(!view.includes('nightVotes'));
+});
+
+test('chats: general, traidores y muertos', () => {
+    const { g, traitors, loyals } = setup(8);
+    assert.throws(() => g.addChat(loyals[0].id, 'traitors', 'hola'), /acceso/);
     assert.strictEqual(g.addChat(traitors[0].id, 'traitors', 'hola').channel, 'traitors');
+    g.getPlayer(loyals[0].id).alive = false;
+    assert.throws(() => g.addChat(loyals[0].id, 'general', 'hola'), /muertos/);
+    assert.strictEqual(g.addChat(loyals[0].id, 'dead', 'buuu').channel, 'dead');
+    assert.throws(() => g.addChat(loyals[1].id, 'dead', 'hola'), /eliminados/);
 });
 
-test('horario del cónclave 22:30-3:00 en hora de Madrid', () => {
-    // Octubre 2026: Madrid = UTC+2
-    assert.strictEqual(isConclaveTime(new Date('2026-10-07T20:29:00Z')), false); // 22:29
-    assert.strictEqual(isConclaveTime(new Date('2026-10-07T20:30:00Z')), true); // 22:30
-    assert.strictEqual(isConclaveTime(new Date('2026-10-08T00:59:00Z')), true); // 2:59
-    assert.strictEqual(isConclaveTime(new Date('2026-10-08T01:00:00Z')), false); // 3:00
+test('MC: anuncios públicos y mensajes privados', () => {
+    const { g, loyals } = setup(6);
+    assert.strictEqual(g.mcMessage('¡Prueba a las 18:00!').fromMc, true);
+    g.mcMessage('Tu misión secreta…', loyals[0].id);
+    assert.strictEqual(g.privateView(loyals[0].id).inbox.length, 1);
+    assert.strictEqual(g.privateView(loyals[1].id).inbox.length, 0);
 });
 
-test('chat de muertos: solo eliminados; los muertos no escriben en el general', () => {
-    const { g, faithfuls } = setup(6);
-    const deadId = faithfuls[0].id;
-    assert.throws(() => g.addChat(deadId, 'dead', 'hola'), /eliminados/);
-    g.getPlayer(deadId).alive = false;
-    assert.strictEqual(g.addChat(deadId, 'dead', 'desde el más allá').channel, 'dead');
-    assert.throws(() => g.addChat(deadId, 'general', 'hola'), /chat de muertos/);
-    assert.throws(() => g.addChat(faithfuls[1].id, 'dead', 'hola'), /eliminados/);
-    g.state.phase = 'gameover';
-    assert.strictEqual(g.addChat(deadId, 'general', 'bien jugado').channel, 'general');
-});
-
-test('partidas guardadas sin chat de muertos se cargan correctamente', () => {
-    const g = new Game({ phase: 'waiting', chat: { general: [], traitors: [] } });
-    assert.deepStrictEqual(g.state.chat.dead, []);
+test('nueva partida con los mismos jugadores', () => {
+    const { g } = setup(6, {}, [{ name: 'X', max: 100 }]);
+    g.updateTest(g.state.tests[0].id, { score: 50 });
+    g.restart();
+    assert.strictEqual(g.state.phase, 'lobby');
+    assert.strictEqual(g.state.players.length, 6);
+    assert.ok(g.state.players.every(p => p.role === null && p.alive));
+    assert.strictEqual(g.treasure(), 0);
 });

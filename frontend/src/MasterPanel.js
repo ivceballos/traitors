@@ -86,6 +86,7 @@ function Dashboard({ state, onLogout }) {
     const [selected, setSelected] = useState([]);
     const [testName, setTestName] = useState('');
     const [points, setPoints] = useState('');
+    const [gold, setGold] = useState('');
 
     // Quitar de la selección a jugadores que ya no existen (p. ej. tras reiniciar)
     useEffect(() => {
@@ -111,6 +112,12 @@ function Dashboard({ state, onLogout }) {
         e.preventDefault();
         socket.emit('master-add-points', { players: selected, points: parseInt(points, 10) });
         setPoints('');
+    };
+
+    const addGold = e => {
+        e.preventDefault();
+        socket.emit('master-add-treasure', parseInt(gold, 10));
+        setGold('');
     };
 
     const reset = () => {
@@ -139,6 +146,7 @@ function Dashboard({ state, onLogout }) {
                     {state.phase === 'night' && <div className="stat">Cónclave<b>{state.conclaveOpen ? 'Abierto' : `Cerrado (${state.conclaveHours})`}</b></div>}
                     {state.phase === 'night' && state.gameDay > 1 && <div className="stat">Asesinato<b>{state.pendingKill ? 'Elegido' : 'Pendiente'}</b></div>}
                     {state.gameDay === 1 && <div className="stat">Invitación<b>{INVITATION_LABELS[state.invitationStatus]}</b></div>}
+                    <div className="stat">Botín<b>{state.treasure.toLocaleString('es-ES')} oro · {(state.treasure / state.goldPerEuro).toLocaleString('es-ES', { style: 'currency', currency: 'EUR' })}</b></div>
                     {state.winner && <div className="stat">Ganadores<b>{state.winner}</b></div>}
                 </div>
 
@@ -213,8 +221,34 @@ function Dashboard({ state, onLogout }) {
                         )}
                     </form>
 
+                    <form className="card" onSubmit={addGold}>
+                        <h3>💰 Botín común</h3>
+                        <p className="muted small">Oro conseguido en las pruebas ({state.goldPerEuro} oro = 1 €). Negativo para corregir.</p>
+                        <div className="row">
+                            <input type="number" placeholder="Oro" value={gold} onChange={e => setGold(e.target.value)} />
+                            <button className="btn gold" type="submit" disabled={!parseInt(gold, 10)}>Añadir al botín</button>
+                        </div>
+                    </form>
+
+                    <div className="card ghost-card">
+                        <h3>💀 Sociedad Secreta de los Fantasmas</h3>
+                        <p className="muted small">Solo tú y los eliminados veis esto. El objetivo se asigna al azar entre los fieles vivos en cada amanecer.</p>
+                        <div className="stats">
+                            <div className="stat">Objetivo hoy<b>{state.ghosts.targetName || '—'}</b></div>
+                            <div className="stat">Calaveras<b>{state.ghosts.skulls}</b></div>
+                            <div className="stat">Robarían<b>{state.ghosts.percent}% · {state.ghosts.stolen.toLocaleString('es-ES')} oro</b></div>
+                        </div>
+                        {state.ghosts.history.length > 0 && (
+                            <ul className="small muted ghost-history">
+                                {state.ghosts.history.map((h, i) => (
+                                    <li key={i}>Día {h.day}: {h.targetName} — {h.votes} voto(s){h.eliminated && ', eliminado'} → +{h.skulls} 💀</li>
+                                ))}
+                            </ul>
+                        )}
+                    </div>
+
                     <form className="card" onSubmit={addPoints}>
-                        <h3>Puntos</h3>
+                        <h3>Puntos individuales</h3>
                         <div className="row">
                             <input type="number" placeholder="Puntos (negativo para restar)" value={points} onChange={e => setPoints(e.target.value)} />
                             <button className="btn" type="submit" disabled={!parseInt(points, 10) || selected.length === 0}>Asignar ({selected.length})</button>

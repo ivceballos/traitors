@@ -22,6 +22,7 @@ function App() {
     const [view, setView] = useState(null); // estado público
     const [me, setMe] = useState(null); // estado privado del jugador
     const [status, setStatus] = useState(storage.get(TOKEN_KEY) ? 'auth' : 'anon'); // anon | auth | joined
+    const [ghostWelcome, setGhostWelcome] = useState(false);
     const [chat, setChat] = useState({ general: [], traitors: [], dead: [] });
 
     useEffect(() => {
@@ -45,6 +46,8 @@ function App() {
         const onChat = msg => setChat(c => ({ ...c, [msg.channel]: [...(c[msg.channel] || []), msg].slice(-200) }));
         const onError = msg => push(msg, 'error');
         const onNotice = msg => push(msg);
+        // Se muestra la bienvenida aunque el jugador muera con la app cerrada (ver GhostWelcomeModal)
+        const onGhostWelcome = () => setGhostWelcome(w => !w);
         const onReset = () => {
             onAuthFailed();
             setChat({ general: [], traitors: [], dead: [] });
@@ -61,6 +64,7 @@ function App() {
         socket.on('game-error', onError);
         socket.on('notice', onNotice);
         socket.on('game-reset', onReset);
+        socket.on('ghost-welcome', onGhostWelcome);
         if (socket.connected) onConnect();
 
         return () => {
@@ -74,6 +78,7 @@ function App() {
             socket.off('game-error', onError);
             socket.off('notice', onNotice);
             socket.off('game-reset', onReset);
+            socket.off('ghost-welcome', onGhostWelcome);
         };
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
@@ -100,6 +105,9 @@ function App() {
             {!connected && view && <div className="alert error center" style={{ margin: 0, borderRadius: 0 }}>Sin conexión. Reintentando…</div>}
             {content}
             {me && me.invitationPending && <InvitationModal />}
+            {me && me.ghostSociety && view && view.phase !== 'gameover' && (
+                <GhostWelcomeModal key={String(ghostWelcome)} playerId={me.playerId} onClose={() => setGhostWelcome(w => !w)} />
+            )}
             <Toasts toasts={toasts} dismiss={dismiss} />
         </>
     );
@@ -232,10 +240,13 @@ function GameScreen({ view, me, chat }) {
                 <div style={{ textAlign: 'right' }}>
                     <div><strong>{self.name}</strong> <RoleBadge role={me.role} /></div>
                     <div className="muted">{self.score} puntos</div>
+                    <div className="gold">💰 Botín: {formatGold(view.treasure, view.goldPerEuro)}</div>
                 </div>
             </div>
 
             <div className="alert info">{phaseHint(view, me, self)}</div>
+
+            {me.ghostSociety && <GhostPanel ghost={me.ghostSociety} />}
 
             {isTraitor && me.traitors && (
                 <div className="alert traitor">
@@ -432,11 +443,106 @@ function DeviceLink() {
     );
 }
 
+function formatGold(gold, perEuro = 100) {
+    const euros = gold / perEuro;
+    return `${gold.toLocaleString('es-ES')} oro (${euros.toLocaleString('es-ES', { style: 'currency', currency: 'EUR' })})`;
+}
+
+const GHOST_WELCOME_KEY = 'ghostWelcomeSeen:';
+
+function GhostWelcomeModal({ playerId, onClose }) {
+    // Solo una vez por jugador y navegador
+    const seen = storage.get(GHOST_WELCOME_KEY + playerId);
+    if (seen) return null;
+    const close = () => {
+        storage.set(GHOST_WELCOME_KEY + playerId, '1');
+        onClose();
+    };
+    return (
+        <div className="modal-backdrop">
+            <div className="modal ghost-modal">
+                <h2>💀 La Sociedad Secreta de los Fantasmas</h2>
+                <p>Has sido eliminado… pero tu partida no ha terminado. Ahora formas parte de una sociedad secreta que los vivos no conocen.</p>
+                <ul>
+                    <li>Cada día recibiréis en secreto el nombre de un jugador: vuestro <strong>objetivo</strong>.</li>
+                    <li>Vuestra misión es influir sutilmente en los vivos para que reciba votos en la mesa redonda.</li>
+                    <li>Cada voto contra el objetivo: <strong>1 calavera</strong>. Si además es eliminado: <strong>+2</strong>.</li>
+                    <li>Las calaveras son de todos los Fantasmas. Con 18 robáis el 50 % del botín final; con 26, el 75 %; con 33, el 100 %.</li>
+                </ul>
+                <p><strong>Ni una palabra a los vivos.</strong> Coordinaos en el chat de muertos.</p>
+                <button className="btn block ghost-btn" onClick={close}>Entendido</button>
+            </div>
+        </div>
+    );
+}
+
+function SkullProgress({ skulls, thresholds }) {
+    const max = Math.max(...thresholds.map(t => t.skulls));
+    return (
+        <div className="skull-track">
+            <div className="skull-fill" style={{ width: `${Math.min(100, (skulls / max) * 100)}%` }} />
+            {thresholds.map(t => (
+                <span key={t.skulls} className={`skull-mark ${skulls >= t.skulls ? 'reached' : ''}`} style={{ left: `${(t.skulls / max) * 100}%` }}>
+                    <span>{t.skulls}💀 · {t.percent}%</span>
+                </span>
+            ))}
+        </div>
+    );
+}
+
+function GhostPanel({ ghost }) {
+    return (
+        <div className="card ghost-card">
+            <h3>💀 Sociedad Secreta de los Fantasmas</h3>
+            <div className="ghost-target">
+                {ghost.targetName
+                    ? <>Objetivo de hoy: <strong>{ghost.targetName}</strong></>
+                    : <span className="muted">Esperando el objetivo del próximo amanecer…</span>}
+            </div>
+            <p><strong>{ghost.skulls}</strong> calaveras · botín robado al final: <strong>{ghost.percent}%</strong>
+                {ghost.nextThreshold && <span className="muted"> (faltan {ghost.nextThreshold.skulls - ghost.skulls} para el {ghost.nextThreshold.percent}%)</span>}
+            </p>
+            <SkullProgress skulls={ghost.skulls} thresholds={ghost.thresholds} />
+            {ghost.history.length > 0 && (
+                <ul className="small muted ghost-history">
+                    {ghost.history.map((h, i) => (
+                        <li key={i}>Día {h.day}: {h.targetName} — {h.votes} voto(s){h.eliminated && ', eliminado'} → +{h.skulls} 💀</li>
+                    ))}
+                </ul>
+            )}
+        </div>
+    );
+}
+
+function GhostReveal({ ghosts, treasure, goldPerEuro }) {
+    return (
+        <div className="card ghost-card">
+            <h3>💀 Revelación: la Sociedad Secreta de los Fantasmas</h3>
+            <p>Mientras los vivos buscaban a los traidores, los eliminados conspiraban desde las sombras para que cada día un objetivo secreto recibiera votos.</p>
+            <SkullProgress skulls={ghosts.skulls} thresholds={ghosts.thresholds} />
+            <p>
+                Consiguieron <strong>{ghosts.skulls} calaveras</strong>.{' '}
+                {ghosts.percent > 0
+                    ? <>Roban el <strong>{ghosts.percent}%</strong> del botín: <strong>{formatGold(ghosts.stolen, goldPerEuro)}</strong>. A los vivos les quedan {formatGold(treasure - ghosts.stolen, goldPerEuro)}.</>
+                    : <>No alcanzaron el primer umbral: el botín de {formatGold(treasure, goldPerEuro)} queda intacto.</>}
+            </p>
+            {ghosts.history.length > 0 && (
+                <ul className="small muted ghost-history">
+                    {ghosts.history.map((h, i) => (
+                        <li key={i}>Día {h.day}: {h.targetName} — {h.votes} voto(s){h.eliminated && ', eliminado'} → +{h.skulls} 💀</li>
+                    ))}
+                </ul>
+            )}
+        </div>
+    );
+}
+
 function GameOverScreen({ view, me, chat }) {
     const self = view.players.find(p => p.id === me.playerId) || { alive: false };
     const winnersRole = view.winner === 'TRAIDORES' ? 'traidor' : 'fiel';
     const iWon = me.role === winnersRole;
     const ranking = [...view.players].sort((a, b) => b.score - a.score);
+    const ghosts = view.ghosts;
     return (
         <div className="container narrow">
             <h1 className="center">Fin del juego</h1>
@@ -444,6 +550,7 @@ function GameOverScreen({ view, me, chat }) {
                 <h2 style={{ margin: 0 }}>Ganan los {view.winner}</h2>
                 <div>{iWon ? '¡Has ganado!' : 'Has perdido.'}</div>
             </div>
+            {ghosts && <GhostReveal ghosts={ghosts} treasure={view.treasure} goldPerEuro={view.goldPerEuro} />}
             <div className="card">
                 <h3>Jugadores y puntuaciones</h3>
                 <ul className="players">
