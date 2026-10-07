@@ -3,7 +3,7 @@
   - Titulares en Archivo condensada, mayúsculas, interlineado apretado.
   - Texto en Geist.
   - Negro neutro + blanco roto + un único acento rojo. Sin degradados.
-  - Esquinas rectas (2px) en todo; solo las personas (avatares) son círculos.
+  - Esquinas rectas (2px) en todo menos los botones, que son redondeados; las personas (avatares) son círculos.
   - Tema oscuro fijo: es un juego de noche y se proyecta en la tele.
 */
 :root {
@@ -24,6 +24,7 @@
     --accent-line: rgba(210, 58, 66, 0.6);
     --torch: 255, 150, 60; /* solo para la luz de las antorchas, nunca en la interfaz */
     --radius: 2px;
+    --radius-btn: 999px; /* los botones, redondeados */
     --font-display: 'IM Fell English SC', 'IM Fell English', Georgia, serif;
     --font-display-italic: 'IM Fell English', Georgia, serif;
     --font: 'Geist Variable', system-ui, -apple-system, 'Segoe UI', sans-serif;
@@ -104,8 +105,8 @@ h3 { font-family: var(--font); font-size: 1rem; font-weight: 600; margin: 0 0 12
     --btn-filete: transparent;
     position: relative; overflow: hidden;
     display: inline-flex; align-items: center; justify-content: center; gap: 8px;
-    border: 1px solid var(--btn-line); border-radius: var(--radius);
-    padding: 12px 20px; min-height: 48px;
+    border: 1px solid var(--btn-line); border-radius: var(--radius-btn);
+    padding: 12px 22px; min-height: 48px;
     background: var(--btn-bg); color: var(--btn-fg);
     box-shadow: inset 0 0 0 1px var(--btn-filete);
     font-family: var(--font); font-size: 14px; font-weight: 600; line-height: 1.2;
@@ -175,7 +176,7 @@ h3 { font-family: var(--font); font-size: 1rem; font-weight: 600; margin: 0 0 12
 .check { display: flex; gap: 10px; align-items: center; cursor: pointer; }
 .check input { width: 18px; height: 18px; accent-color: var(--gold); flex-shrink: 0; margin: 0; }
 
-.segmented { display: flex; border: 1px solid var(--line-strong); border-radius: var(--radius); }
+.segmented { display: flex; border: 1px solid var(--line-strong); border-radius: var(--radius-btn); overflow: hidden; }
 .segmented button {
     flex: 1; border: 0; border-left: 1px solid var(--line-strong); background: transparent;
     padding: 10px; color: var(--muted); font-weight: 600; cursor: pointer; font-size: 12px; letter-spacing: 0.06em; text-transform: uppercase;
@@ -184,7 +185,7 @@ h3 { font-family: var(--font); font-size: 1rem; font-weight: 600; margin: 0 0 12
 .segmented button:first-child { border-left: 0; }
 .segmented button.on { background: var(--surface-3); color: var(--text); box-shadow: inset 0 -2px 0 var(--gold); }
 
-.stepper { display: inline-flex; align-items: center; border: 1px solid var(--line-strong); border-radius: var(--radius); }
+.stepper { display: inline-flex; align-items: center; border: 1px solid var(--line-strong); border-radius: var(--radius-btn); overflow: hidden; }
 .stepper button { width: 36px; height: 36px; border: 0; background: transparent; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; }
 .stepper button:disabled { opacity: 0.3; cursor: default; }
 .stepper span { min-width: 30px; text-align: center; font-weight: 600; font-variant-numeric: tabular-nums; }
@@ -261,7 +262,7 @@ button.player-tile:disabled { cursor: default; }
 .role-face .display { font-size: 4.2rem; }
 
 /* ============ Chat ============ */
-.tabs { display: flex; border: 1px solid var(--line-strong); border-radius: var(--radius); overflow-x: auto; }
+.tabs { display: flex; border: 1px solid var(--line-strong); border-radius: var(--radius); overflow-x: auto; overflow-y: hidden; touch-action: pan-x; }
 .tab {
     flex: 1; white-space: nowrap; border: 0; border-left: 1px solid var(--line-strong); background: transparent;
     color: var(--muted); padding: 10px 12px; font-weight: 600; cursor: pointer;
@@ -328,7 +329,12 @@ button.player-tile:disabled { cursor: default; }
 .home-hero p { color: var(--muted); max-width: 30ch; margin: 18px 0 0; font-size: 1.05rem; }
 
 /* ============ Panel del MC ============ */
-.mc-nav { display: flex; overflow-x: auto; border-bottom: 1px solid var(--line); }
+/* Solo se desliza en horizontal: sin overflow-y el navegador lo deja moverse 1-2 px en vertical */
+.mc-nav {
+    display: flex; overflow-x: auto; overflow-y: hidden; overscroll-behavior: contain; touch-action: pan-x;
+    scrollbar-width: none; border-bottom: 1px solid var(--line);
+}
+.mc-nav::-webkit-scrollbar { display: none; }
 .mc-nav button {
     white-space: nowrap; border: 0; background: transparent; padding: 12px 14px; color: var(--muted); font-weight: 600; cursor: pointer;
     border-bottom: 2px solid transparent; margin-bottom: -1px; display: inline-flex; align-items: center; gap: 6px;

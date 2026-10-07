@@ -4,7 +4,7 @@ Documento de traspaso para continuar en local. Rama de trabajo: `claude/repos-mu
 
 ## Qué es
 
-Web app del juego de traición «Fieles y Felones» (inspirado en *Traitors*) para viajes con amigos. Sustituye a lo que se usó en la despedida de Adrián (julio 2025, 12 jugadores): Google Sheets con Apps Script, WhatsApp y una MC remota (Alba) a la que había que conectar a mano.
+Web app del juego de traición «Fieles y Felones» (inspirado en *Traitors*) para viajes con amigos. Sustituye a lo que se usó en la primera partida (julio 2025, 12 jugadores): Google Sheets con Apps Script, WhatsApp y una MC remota a la que había que conectar a mano. En la app no debe aparecer «Despedida de Adrián» en ningún sitio.
 
 - Backend: Node, Express y Socket.IO (`backend/`). El motor del juego es puro, está en `backend/game.js` y lo prueba `backend/game.test.js` (`npm test`, 26 tests).
 - Frontend: React con CRA (`frontend/`). Rutas: `/` (portada), `/crear`, `/p/CÓDIGO` (jugador), `/mc/CÓDIGO` (MC), `/tv/CÓDIGO` (tele).
@@ -26,7 +26,7 @@ Web app del juego de traición «Fieles y Felones» (inspirado en *Traitors*) pa
 - Cambios del concilio de diseño, UX y dinámicas (informe: https://claude.ai/artifact/XQue16QzcsVqNwurzb785R):
   - Botones: primario dorado; lacre rojo que se confirma manteniendo pulsado (`HoldButton`); secundario en contorno; discreto subrayado; desactivado con pista; «Enviando…» y «Reintentar» (`ActionButton`).
   - Secretos: «Mi rol» guarda la carta, los aliados, el cónclave y el chat de los Felones. De noche todos señalan a un sospechoso (`suspect`). El MC tiene los roles ocultos por defecto.
-  - Fantasmas: objetivo de cualquier bando, umbrales automáticos (8/12/16 en la despedida), solo puntúa la primera votación, votos al objetivo obligatorios en persona y revelación final siempre.
+  - Fantasmas: objetivo de cualquier bando, umbrales automáticos (8/12/16 con 12 jugadores), solo puntúa la primera votación, votos al objetivo obligatorios en persona y revelación final siempre.
   - Voto bloqueado al confirmarlo. Pantalla del jugador con la acción arriba y pestañas.
   - Tele: Wake Lock, velo, código y QR siempre visibles. Enlace de reentrada por jugador desde el MC.
 - Logo nuevo e iconos.

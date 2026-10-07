@@ -58,9 +58,9 @@ const PRESETS = {
         config: {}
     },
     'fieles-felones': {
-        label: 'Despedida de Adrián (12 jugadores)',
+        label: 'Fieles y Felones (12 jugadores)',
         config: {
-            name: 'Despedida de Adrián',
+            name: 'Fieles y Felones',
             schedule: [
                 { roundtable: 0, conclave: 0 },
                 { roundtable: 1, conclave: 1 },
@@ -418,7 +418,7 @@ class Game {
         player.eliminatedBy = by;
         player.eliminatedDay = day;
         const reveal = this.config.revealRole ? ` Era ${player.role === 'traitor' ? 'de los ' + this.config.factions.traitor : 'de los ' + this.config.factions.loyal}.` : '';
-        const name = player.name.replace(/\.+$/, ''); // «Adri C.» no debe acabar en «..»
+        const name = player.name.replace(/\.+$/, ''); // «Ana C.» no debe acabar en «..»
         this.log(by, by === 'murder' ? `Han asesinado a ${name}.` : `La mesa destierra a ${name}.${reveal}`, { playerId: player.id });
         const g = this.state.ghosts;
         if (by === 'banish' && g.today && g.today.targetId === player.id && this.config.ghosts.enabled) {

@@ -205,7 +205,7 @@ export default function Create() {
                             Umbrales automáticos según los días y el número de jugadores (recomendado)
                         </label>
                         {config.ghosts.auto !== false ? (
-                            <p className="small muted m0">Se calculan al empezar: con la plantilla de la despedida y 12 jugadores salen 8, 12 y 16 calaveras para robar el 50, 75 y 100 % del botín.</p>
+                            <p className="small muted m0">Se calculan al empezar: con la plantilla de 12 jugadores salen 8, 12 y 16 calaveras para robar el 50, 75 y 100 % del botín.</p>
                         ) : (
                         <table className="table">
                             <thead><tr><th>Calaveras</th><th className="r">Roban del botín</th></tr></thead>
