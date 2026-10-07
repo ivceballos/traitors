@@ -25,17 +25,22 @@ const io = new Server(server, { cors: { origin: CORS_ORIGIN }, maxHttpBufferSize
 // ---------- Salas y persistencia ----------
 // Cada partida es una sala con código. Se guarda entera en un documento de MongoDB;
 // si no hay base de datos, las partidas viven solo en memoria.
+//
+// Puede haber dos servidores con la misma base de datos (el NAS de principal y Render
+// de reserva). Cada guardado lleva un número de versión (rev): solo se escribe si nadie
+// ha guardado antes, y cada servidor relee la partida cuando otro la ha cambiado.
 
 const RoomModel = mongoose.model('Room', new mongoose.Schema({
     code: { type: String, unique: true, index: true },
     state: mongoose.Schema.Types.Mixed,
     mcHash: String,
+    rev: Number,
     updatedAt: Date
 }, { minimize: false }));
 
 mongoose.set('bufferCommands', false); // sin BD, fallar rápido en vez de colgarse
 
-const rooms = new Map(); // code -> { code, game, mcHash, saving, saveQueued, knownDead }
+const rooms = new Map(); // code -> { code, game, mcHash, rev, saving, saveQueued, knownDead }
 const dbReady = () => mongoose.connection.readyState === 1;
 
 const CODE_CHARS = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // sin 0/O ni 1/I
@@ -53,8 +58,8 @@ function checkPassword(password, stored) {
     return crypto.timingSafeEqual(candidate, Buffer.from(hash, 'hex'));
 }
 
-function wrapRoom(code, state, mcHash) {
-    const room = { code, game: new Game(state), mcHash, saving: false, saveQueued: false, knownDead: null };
+function wrapRoom(code, state, mcHash, rev = 0) {
+    const room = { code, game: new Game(state), mcHash, rev, saving: false, saveQueued: false, knownDead: null };
     room.knownDead = new Set(room.game.dead().map(p => p.id));
     rooms.set(code, room);
     return room;
@@ -63,11 +68,34 @@ function wrapRoom(code, state, mcHash) {
 async function getRoom(rawCode) {
     const code = String(rawCode || '').toUpperCase().trim();
     if (!/^[A-Z0-9]{4}$/.test(code)) return null;
-    if (rooms.has(code)) return rooms.get(code);
+    if (rooms.has(code)) {
+        const room = rooms.get(code);
+        await syncRoom(room);
+        return room;
+    }
     if (!dbReady()) return null;
     const doc = await RoomModel.findOne({ code }).lean();
     if (!doc) return null;
-    return rooms.get(code) || wrapRoom(code, doc.state, doc.mcHash);
+    return rooms.get(code) || wrapRoom(code, doc.state, doc.mcHash, doc.rev || 0);
+}
+
+// Relee la partida si otro servidor ha guardado una versión más nueva. Devuelve true si cambió.
+// Mientras este servidor tiene un guardado pendiente no se relee: la versión buena es la nuestra.
+async function syncRoom(room, { force = false } = {}) {
+    if (!dbReady() || (!force && (room.saving || room.saveQueued))) return false;
+    try {
+        const head = await RoomModel.findOne({ code: room.code }, { rev: 1 }).lean();
+        if (!head || (!force && (head.rev || 0) <= room.rev)) return false;
+        const doc = await RoomModel.findOne({ code: room.code }).lean();
+        if (!doc || (!force && (doc.rev || 0) <= room.rev)) return false;
+        room.game.state = doc.state;
+        room.mcHash = doc.mcHash;
+        room.rev = doc.rev || 0;
+        return true;
+    } catch (err) {
+        console.error(`Error releyendo la sala ${room.code}:`, err.message);
+        return false;
+    }
 }
 
 async function requireRoom(code) {
@@ -84,7 +112,10 @@ async function createRoom({ config, tests, mcPassword }) {
     }
     const password = String(mcPassword || '').trim();
     const room = wrapRoom(code, createState(config, tests), password ? hashPassword(password) : null);
-    await persist(room);
+    if (dbReady()) {
+        await RoomModel.create({ code, state: room.game.state, mcHash: room.mcHash, rev: 1, updatedAt: new Date() });
+        room.rev = 1;
+    }
     return room;
 }
 
@@ -93,11 +124,20 @@ async function persist(room) {
     if (room.saving) { room.saveQueued = true; return; }
     room.saving = true;
     try {
-        await RoomModel.updateOne(
-            { code: room.code },
-            { state: room.game.state, mcHash: room.mcHash, updatedAt: new Date() },
-            { upsert: true }
+        // Solo se guarda si nadie ha escrito desde nuestra última versión (las salas antiguas no tienen rev)
+        const sameRev = room.rev ? { rev: room.rev } : { $or: [{ rev: 0 }, { rev: { $exists: false } }] };
+        const res = await RoomModel.updateOne(
+            { code: room.code, ...sameRev },
+            { $set: { state: room.game.state, mcHash: room.mcHash, rev: room.rev + 1, updatedAt: new Date() } }
         );
+        if (res.matchedCount === 1) {
+            room.rev += 1;
+        } else {
+            // El otro servidor guardó antes: gana su versión y se reenvía a nuestros móviles
+            console.warn(`Sala ${room.code}: conflicto con otro servidor, se recarga su versión`);
+            room.saveQueued = false;
+            if (await syncRoom(room, { force: true })) refresh(room);
+        }
     } catch (err) {
         console.error(`Error guardando la sala ${room.code}:`, err.message);
     } finally {
@@ -122,7 +162,7 @@ function chatHistoryFor(game, playerId) {
     };
 }
 
-function broadcast(room) {
+function broadcast(room, { save = true } = {}) {
     const { code, game } = room;
     io.to(pubRoom(code)).emit('state', game.publicView(code));
     game.state.players.forEach(p => io.to(playerRoom(code, p.id)).emit('private', game.privateView(p.id)));
@@ -134,7 +174,17 @@ function broadcast(room) {
         if (game.config.ghosts.enabled) io.to(playerRoom(code, p.id)).emit('ghost-welcome');
     });
     room.knownDead = new Set(game.dead().map(p => p.id));
-    persist(room);
+    if (save) persist(room);
+}
+
+// Tras recargar una versión de otro servidor: estado y chats nuevos para todos, sin volver a guardar
+function refresh(room) {
+    const { code, game } = room;
+    // Primero lo público (tele), luego lo personal: el último mensaje que recibe cada móvil es el suyo
+    io.to(pubRoom(code)).emit('chat-history', { general: game.state.chat.general, traitors: [], dead: [] });
+    game.state.players.forEach(p => io.to(playerRoom(code, p.id)).emit('chat-history', chatHistoryFor(game, p.id)));
+    io.to(mcRoom(code)).emit('chat-history', game.state.chat);
+    broadcast(room, { save: false });
 }
 
 function emitChat(room, msg) {
@@ -391,6 +441,23 @@ io.on('connection', (socket) => {
         room.mcHash = hashPassword(p);
     });
 });
+
+// Si hay otro servidor con la misma base de datos, sus cambios llegan aquí en unos segundos
+setInterval(() => {
+    if (!dbReady()) return;
+    rooms.forEach(async room => {
+        const watched = io.sockets.adapter.rooms.get(pubRoom(room.code));
+        if (!watched || watched.size === 0) return;
+        if (await syncRoom(room)) refresh(room);
+    });
+}, 3000);
+
+// El servidor principal mantiene despierto al de reserva (Render gratis se duerme a los 15 min)
+if (process.env.KEEPALIVE_URL) {
+    const ping = () => fetch(process.env.KEEPALIVE_URL).catch(() => {});
+    ping();
+    setInterval(ping, 10 * 60 * 1000);
+}
 
 // El cónclave puede abrir y cerrar por horario: avisar cuando cambie
 setInterval(() => {
