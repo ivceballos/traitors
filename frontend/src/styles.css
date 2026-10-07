@@ -473,14 +473,11 @@ h1, h2, .display, .tv-title, .tv-phase, .tv-code { text-shadow: 0 1px 0 rgba(0, 
 /* Sellos de los bandos */
 /* Sellos: lacre rojo con el grabado en dorado, iguales en color para los tres bandos */
 .seal {
-    display: inline-grid; place-items: center; flex-shrink: 0; position: relative;
-    background: var(--seal-wax) center / contain no-repeat;
-    filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.55));
+    display: inline-block; flex-shrink: 0;
 }
 /* Lacre fotográfico: un halo cálido muy suave lo separa del fondo oscuro */
 .seal-photo { display: inline-block; object-fit: contain; background: none; filter: drop-shadow(0 0 1px rgba(255, 190, 140, 0.35)) drop-shadow(0 3px 8px rgba(0, 0, 0, 0.6)); }
 .seal-ink {
-    width: 72%; height: 72%;
     background: linear-gradient(135deg, #f3d488 0%, #d6aa4c 45%, #a07a2c 100%);
     -webkit-mask: var(--seal-img) center / contain no-repeat; mask: var(--seal-img) center / contain no-repeat;
 }

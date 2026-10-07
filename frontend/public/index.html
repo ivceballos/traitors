@@ -51,7 +51,7 @@
         var velo = document.getElementById('velo');
         var base = '%PUBLIC_URL%/img/';
         var vertical = window.innerHeight > window.innerWidth;
-        var imagenes = [vertical ? 'castillo-vertical.jpg' : 'castillo-horizontal.jpg', 'logo.webp', 'lacre.webp'];
+        var imagenes = [vertical ? 'castillo-vertical.jpg' : 'castillo-horizontal.jpg', 'logo.webp'];
         var cargar = function (src) {
           return new Promise(function (ok) { var i = new Image(); i.onload = i.onerror = ok; i.src = base + src; });
         };
