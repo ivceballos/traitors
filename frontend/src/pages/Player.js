@@ -5,7 +5,7 @@ import {
 } from '@phosphor-icons/react';
 import { formatEuros, formatGold, playerTokenKey, send, socket, storage } from '../api';
 import {
-    Art, Avatar, CopyBox, Loading, Modal, OfflineBanner, PhotoPicker, RoleTag, TestsTable, Thresholds, Toasts,
+    Art, Avatar, CopyBox, Loading, Modal, Seal, OfflineBanner, PhotoPicker, RoleTag, TestsTable, Thresholds, Toasts,
     useConnection, useSocketEvent, useToasts
 } from '../components';
 
@@ -475,6 +475,7 @@ function RoleModal({ me, view, onClose }) {
                         </div>
                         <div className={`role-face back ${me.role} has-art`}>
                             <Art name={isTraitor ? 'punal.jpg' : 'farol.jpg'} />
+                            <Seal kind={me.role} size={64} className="card-seal" />
                             <span className="grow" />
                             <span className="small">Eres de los</span>
                             <span className="display">{isTraitor ? view.factions.traitor : view.factions.loyal}</span>
@@ -498,8 +499,8 @@ function GhostWelcome({ onClose }) {
     return (
         <Modal>
             <div className="card stack">
-                <Art name="fantasma.jpg" className="ghost-art" />
-                <h2>La Sociedad Secreta de los Fantasmas</h2>
+                <Seal kind="ghost" size={120} className="center-seal" />
+                <h2 className="center">La Sociedad Secreta de los Fantasmas</h2>
                 <p className="m0">Has sido eliminado, pero tu partida sigue. Ahora formas parte de una sociedad secreta que los vivos no conocen.</p>
                 <p className="m0">Cada día recibiréis el nombre de un jugador. Conseguid, sin que se note, que los vivos le voten en la mesa redonda. Cada voto suma calaveras, y si lo destierran sumáis más. Con suficientes calaveras robáis parte del botín final.</p>
                 <p className="m0"><strong>Ni una palabra a los vivos.</strong> Coordinaos en vuestro chat.</p>
@@ -698,8 +699,8 @@ function EndScreen({ view, me, chat, self, act }) {
     return (
         <div className="page stack">
             <header className="phase end" style={{ paddingTop: 32 }}>
-                <span className="display" style={{ color: view.winner === 'traitor' ? 'var(--accent)' : 'var(--text)' }}>Ganan los {winners}</span>
-                <Trophy size={36} weight="light" className="phase-icon" />
+                <span className="display" style={{ color: view.winner === 'traitor' ? 'var(--accent)' : 'var(--gold)' }}>Ganan los {winners}</span>
+                <Seal kind={view.winner} size={96} className="phase-icon" />
                 <p className="phase-text m0">{iWon ? 'Has ganado.' : 'Has perdido.'} {view.name} ha terminado.</p>
             </header>
 

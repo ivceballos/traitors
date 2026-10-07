@@ -5,7 +5,7 @@ import {
 } from '@phosphor-icons/react';
 import { formatEuros, formatGold, http, mcTokenKey, send, socket, storage } from '../api';
 import {
-    Avatar, CopyBox, Loading, OfflineBanner, RoleTag, Segmented, Thresholds, Toasts,
+    Avatar, CopyBox, Loading, OfflineBanner, RoleTag, Seal, Segmented, Thresholds, Toasts,
     useConnection, useSocketEvent, useToasts
 } from '../components';
 
@@ -173,8 +173,8 @@ function GameTab({ s, act }) {
 
             <div className="stat-grid">
                 <div className="stat"><div className="label">Vivos</div><div className="value">{alive}</div></div>
-                <div className="stat"><div className="label">{s.config.factions.traitor}</div><div className="value accent">{s.aliveCounts.traitor}</div></div>
-                <div className="stat"><div className="label">{s.config.factions.loyal}</div><div className="value">{s.aliveCounts.loyal}</div></div>
+                <div className="stat"><div className="label row nowrap" style={{ gap: 6 }}><Seal kind="traitor" size={20} />{s.config.factions.traitor}</div><div className="value accent">{s.aliveCounts.traitor}</div></div>
+                <div className="stat"><div className="label row nowrap" style={{ gap: 6 }}><Seal kind="loyal" size={20} />{s.config.factions.loyal}</div><div className="value">{s.aliveCounts.loyal}</div></div>
                 <div className="stat"><div className="label">Botín</div><div className="value">{formatEuros(s.treasure, s.goldPerEuro)}</div></div>
             </div>
 

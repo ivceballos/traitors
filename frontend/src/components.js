@@ -16,9 +16,22 @@ export function Avatar({ player, size = 56, className = '' }) {
     return <span className={`avatar ${dead} ${className}`} style={style} aria-hidden="true">{player.name.charAt(0).toUpperCase()}</span>;
 }
 
+const img = name => `${process.env.PUBLIC_URL}/img/${name}`;
+
+// Sello de cada bando (y de los Fantasmas)
+export function Seal({ kind, size = 48, className = '' }) {
+    const file = { traitor: 'sello-felones.webp', loyal: 'sello-fieles.webp', ghost: 'sello-fantasmas.webp' }[kind];
+    if (!file) return null;
+    return <img className={`seal ${className}`} src={img(file)} alt="" width={size} height={size} style={{ width: size, height: size }} />;
+}
+
 export function RoleTag({ role, factions }) {
     if (!role) return null;
-    return <span className={`tag ${role === 'traitor' ? 'accent' : ''}`}>{role === 'traitor' ? factions.traitor : factions.loyal}</span>;
+    return (
+        <span className={`tag ${role === 'traitor' ? 'accent' : ''}`}>
+            <Seal kind={role} size={14} />{role === 'traitor' ? factions.traitor : factions.loyal}
+        </span>
+    );
 }
 
 export function useToasts(timeout = 6000) {

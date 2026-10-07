@@ -407,3 +407,11 @@ h1, h2, .display, .tv-title, .tv-phase, .tv-code { text-shadow: 0 1px 0 rgba(0, 
 /* Fondo de reserva si aún no está la ilustración */
 .role-face.back.traitor.has-art { background: radial-gradient(120% 80% at 50% 25%, #5a161b 0%, #1a0a0d 55%, var(--bg) 100%); }
 .role-face.back.loyal.has-art { background: radial-gradient(120% 80% at 50% 25%, #1e2c44 0%, #0b1220 55%, var(--bg) 100%); }
+
+/* Sellos de los bandos */
+.seal { display: inline-block; flex-shrink: 0; object-fit: contain; filter: drop-shadow(0 2px 6px rgba(0, 0, 0, 0.6)); }
+.role-face > .card-seal { position: absolute; top: 18px; left: 18px; z-index: 2; }
+.center-seal { display: block; margin: 0 auto; filter: drop-shadow(0 0 22px rgba(255, 170, 70, 0.25)); }
+.phase .seal.phase-icon { filter: drop-shadow(0 0 22px rgba(255, 170, 70, 0.3)); }
+.tv-seal { display: inline-block; vertical-align: middle; margin-right: 2vmin; width: 9vmin !important; height: 9vmin !important; }
+.tv-phase.end { color: var(--gold); }
