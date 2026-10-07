@@ -1,0 +1,16 @@
+# Despliegue en Render: un único servicio que sirve la API, el tiempo real y la web.
+services:
+  - type: web
+    name: traidores
+    runtime: node
+    plan: free
+    buildCommand: cd frontend && npm ci && npm run build && cd ../backend && npm ci --omit=dev
+    startCommand: cd backend && npm start
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_VERSION
+        value: "20"
+      - key: JWT_SECRET
+        generateValue: true
+      - key: MONGODB_URI
+        sync: false

@@ -264,3 +264,17 @@ test('nueva partida con los mismos jugadores', () => {
     assert.ok(g.state.players.every(p => p.role === null && p.alive));
     assert.strictEqual(g.treasure(), 0);
 });
+
+test('pruebas en la tele: el MC lanza una prueba y se marca en juego', () => {
+    const g = new Game(createState({}, [{ name: 'Aguas Tensas', max: 5000, description: 'Pasad el agua con los ojos vendados' }]));
+    const id = g.state.tests[0].id;
+    g.setSpotlight(id);
+    const view = g.publicView('X');
+    assert.strictEqual(view.spotlight, id);
+    assert.strictEqual(view.tests[0].status, 'active');
+    assert.strictEqual(view.tests[0].description, 'Pasad el agua con los ojos vendados');
+    g.updateTest(id, { score: 3200 });
+    assert.strictEqual(g.publicView('X').spotlight, id, 'sigue en la tele para enseñar el resultado');
+    g.setSpotlight(null);
+    assert.strictEqual(g.publicView('X').spotlight, null);
+});

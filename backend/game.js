@@ -168,8 +168,10 @@ function createState(config = {}, tests = []) {
         winner: null, // 'loyal' | 'traitor'
         events: [], // registro público de lo sucedido
         tests: (tests || []).slice(0, 30).map(t => ({
-            id: uuid(), name: cleanText(t.name, 60, 'Prueba'), max: clampInt(t.max, 0, 10000000, 0), score: null, status: 'pending'
+            id: uuid(), name: cleanText(t.name, 60, 'Prueba'), description: cleanText(t.description, 2000),
+            max: clampInt(t.max, 0, 10000000, 0), score: null, status: 'pending'
         })),
+        spotlight: null, // prueba que el MC está mostrando en la tele
         ghosts: { skulls: 0, today: null, history: [] }, // today: { day, targetId, votes, eliminated, skulls }
         chat: { general: [], traitors: [], dead: [] },
         inbox: {}, // mensajes privados del MC por jugador
@@ -615,9 +617,12 @@ class Game {
         return t;
     }
 
-    addTest({ name, max }) {
+    addTest({ name, max, description }) {
         if (this.state.tests.length >= 30) throw new GameError('Demasiadas pruebas');
-        const test = { id: uuid(), name: cleanText(name, 60), max: clampInt(max, 0, 10000000, 0), score: null, status: 'pending' };
+        const test = {
+            id: uuid(), name: cleanText(name, 60), description: cleanText(description, 2000),
+            max: clampInt(max, 0, 10000000, 0), score: null, status: 'pending'
+        };
         if (!test.name) throw new GameError('Introduce el nombre de la prueba');
         this.state.tests.push(test);
         return test;
@@ -627,6 +632,7 @@ class Game {
     updateTest(id, changes) {
         const t = this.getTest(id);
         if (changes.name !== undefined) t.name = cleanText(changes.name, 60, t.name);
+        if (changes.description !== undefined) t.description = cleanText(changes.description, 2000);
         if (changes.max !== undefined) t.max = clampInt(changes.max, 0, 10000000, t.max);
         if (changes.status !== undefined && ['pending', 'active', 'done'].includes(changes.status)) t.status = changes.status;
         if (changes.score !== undefined) {
@@ -647,6 +653,16 @@ class Game {
         const t = this.getTest(id);
         if (t.score !== null) throw new GameError('No se puede borrar una prueba ya puntuada');
         this.state.tests = this.state.tests.filter(x => x.id !== id);
+        if (this.state.spotlight === id) this.state.spotlight = null;
+    }
+
+    // El MC lanza una prueba a la tele (y a los móviles); null la quita
+    setSpotlight(id) {
+        if (id === null) { this.state.spotlight = null; return null; }
+        const t = this.getTest(id);
+        if (t.status === 'pending') t.status = 'active';
+        this.state.spotlight = t.id;
+        return t;
     }
 
     // ----- Chat y mensajes del MC -----
@@ -728,7 +744,8 @@ class Game {
                 // El rol solo se conoce al terminar, o al ser eliminado si así se configura
                 role: ended || (!p.alive && c.revealRole) ? p.role : undefined
             })),
-            tests: s.tests.map(({ id, name, max, score, status }) => ({ id, name, max, score, status })),
+            tests: s.tests.map(({ id, name, description, max, score, status }) => ({ id, name, description: description || '', max, score, status })),
+            spotlight: s.spotlight || null,
             treasure: this.treasure(),
             maxTreasure: s.tests.reduce((sum, t) => sum + t.max, 0),
             events: s.events.slice(-30),

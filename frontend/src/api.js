@@ -1,0 +1,85 @@
+import { io } from 'socket.io-client';
+
+// En desarrollo el backend corre en el puerto 4000 de la misma máquina (el hostname
+// actual permite probar desde el móvil en la misma red). En producción, mismo origen.
+export const SERVER_URL = process.env.REACT_APP_SERVER_URL ||
+    (process.env.NODE_ENV === 'development'
+        ? `${window.location.protocol}//${window.location.hostname}:4000`
+        : window.location.origin);
+
+export const socket = io(SERVER_URL, { autoConnect: true });
+
+// Emite un evento y espera la respuesta del servidor
+export function send(event, payload = {}) {
+    return new Promise((resolve, reject) => {
+        socket.timeout(10000).emit(event, payload, (err, res) => {
+            if (err) return reject(new Error('El servidor no responde'));
+            if (res && res.error) return reject(new Error(res.error));
+            resolve(res || {});
+        });
+    });
+}
+
+export async function http(path, options = {}) {
+    const res = await fetch(SERVER_URL + path, {
+        ...options,
+        headers: { 'Content-Type': 'application/json', ...(options.headers || {}) },
+        body: options.body ? JSON.stringify(options.body) : undefined
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || 'Error de conexión');
+    return data;
+}
+
+export const photoSrc = url => (url ? SERVER_URL + url : null);
+
+export const storage = {
+    get(key) {
+        try { return localStorage.getItem(key); } catch (_) { return null; }
+    },
+    set(key, value) {
+        try { localStorage.setItem(key, value); } catch (_) { /* modo privado */ }
+    },
+    remove(key) {
+        try { localStorage.removeItem(key); } catch (_) { /* modo privado */ }
+    }
+};
+
+export const playerTokenKey = code => `player:${code}`;
+export const mcTokenKey = code => `mc:${code}`;
+
+// Reduce la foto en el móvil antes de enviarla (≈ 30 KB en vez de varios MB)
+export function resizePhoto(file, size = 360) {
+    return new Promise((resolve, reject) => {
+        const img = new Image();
+        img.onload = () => {
+            const scale = size / Math.min(img.width, img.height);
+            const w = img.width * scale;
+            const h = img.height * scale;
+            const canvas = document.createElement('canvas');
+            canvas.width = size;
+            canvas.height = size;
+            canvas.getContext('2d').drawImage(img, (size - w) / 2, (size - h) / 2, w, h); // recorte cuadrado centrado
+            URL.revokeObjectURL(img.src);
+            resolve(canvas.toDataURL('image/jpeg', 0.82));
+        };
+        img.onerror = () => reject(new Error('No se pudo leer la imagen'));
+        img.src = URL.createObjectURL(file);
+    });
+}
+
+export const PHASES = {
+    lobby: 'Sala de espera',
+    day: 'Día',
+    roundtable: 'Mesa redonda',
+    night: 'Noche',
+    end: 'Fin de la partida'
+};
+
+export const formatGold = (gold, perEuro = 100) =>
+    `${Math.round(gold).toLocaleString('es-ES')} oro`;
+
+export const formatEuros = (gold, perEuro = 100) =>
+    (gold / perEuro).toLocaleString('es-ES', { style: 'currency', currency: 'EUR', maximumFractionDigits: 2 });
+
+export const roleLabel = (role, factions) => (role === 'traitor' ? factions.traitor : factions.loyal);

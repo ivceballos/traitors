@@ -1,86 +1,63 @@
-# Traitors - El Juego
+# Traidores
 
-Juego web multijugador inspirado en el reality show "Traitors España".
+Juego social de traición para viajes con amigos, inspirado en *Traitors*. Todo pasa en la web: cada jugador usa su móvil, el Maestro de Ceremonias (MC) dirige desde su panel, presente o a distancia, y una tele muestra el estado de la partida.
 
-## 🎮 Características
+## Cómo se juega
 
-- Juego multijugador en tiempo real
-- Roles secretos (traidores y fieles)
-- Duración de 4 días
-- Sistema de invitación anónima a nuevos traidores
-- Chat general y privado para traidores
-- Sistema de pruebas y puntuaciones
-- Panel de control para el Maestro de Ceremonias
-- Cónclave nocturno (22:30-3:00)
-- Persistencia de sesiones (reconexión automática)
+1. **El MC crea la partida** en `/crear` y elige las reglas del viaje. Recibe un código de 4 letras.
+2. **Los jugadores entran** con ese código, se hacen una foto y esperan en la sala.
+3. **El MC empieza.** Cada jugador ve su rol en una carta que se gira con un toque.
+4. **Cada día** el MC avanza las fases: día, mesa redonda (destierros) y noche (cónclave de los traidores). Las víctimas se revelan al amanecer.
+5. **Pruebas:** el MC las lanza a la tele con sus instrucciones y apunta el oro conseguido. El oro forma el botín común (100 de oro = 1 €, configurable).
+6. **Fin:** ganan los buenos si eliminan a todos los traidores. Ganan los traidores si igualan en número a los buenos o si sigue vivo alguno al acabar el último día.
 
-## 🎯 Reglas del Juego
+### Lo que se configura en cada partida
 
-### Estructura General
-- El juego dura 4 días y el **Maestro de Ceremonias (MC)** controla el ritmo: empieza la partida y avanza cada fase desde su panel
-- Se necesitan mínimo 4 jugadores
-- Traidores iniciales: 2 (1 si hay menos de 6 jugadores, para que la partida no termine al instante)
-- Los roles solo se revelan al ser eliminado o al terminar la partida
+| Opción | Qué hace |
+|---|---|
+| Nombres de los bandos | Fieles/Traidores, Fieles/Felones… |
+| Número de traidores | Automático (1, 2 o 3 según jugadores) o fijo |
+| Calendario | Días y eliminaciones por día en la mesa redonda y en el cónclave |
+| Mesa redonda | Votar desde la app (con desempate entre empatados) o en persona y el MC registra |
+| Cónclave | Abierto toda la noche o en un horario (por ejemplo 22:30 a 3:00) |
+| Reclutamiento | La primera noche los traidores pueden invitar en secreto a un jugador |
+| Sociedad Secreta de los Fantasmas | Ver abajo |
+| Pruebas | Nombre, instrucciones y oro máximo |
 
-### Fases de cada día
-| Día | Fases |
-|-----|-------|
-| 1 | Día (presentaciones) → Noche: los traidores pueden invitar en secreto a un fiel. Sin mesa redonda ni asesinato |
-| 2-3 | Día (se revela la víctima de la noche) → Mesa redonda (votación) → Noche (asesinato) |
-| 4 | Día → Mesa redonda → Fin del juego |
+Incluye la plantilla **Fieles y Felones** (12 jugadores, calendario 0 → 1+1 → 2+2 → 1, votación en persona y sus 7 pruebas).
 
-- **Mesa redonda:** todos los vivos votan; se cierra sola cuando han votado todos (o la cierra el MC). En caso de empate no se destierra a nadie
-- **Chats:** general (todos los vivos), traidores (privado, solo durante el cónclave) y muertos (solo eliminados; los muertos pueden leer el general pero no escribir). Al terminar la partida todos pueden hablar en el general
-- **Cónclave nocturno:** las acciones y el chat secreto de los traidores solo están disponibles de 22:30 a 3:00 (hora de `GAME_TIMEZONE`, por defecto Madrid). El MC puede abrirlo fuera de horario
-- La invitación se bloquea si dejaría a los traidores igualados con los fieles (victoria automática)
+### La Sociedad Secreta de los Fantasmas
 
-### Fin del Juego
-- Los Fieles ganan si eliminan a todos los Traidores
-- Los Traidores ganan si igualan o superan en número a los Fieles
-- Si al terminar el día 4 queda algún Traidor vivo, ganan los Traidores
+Mecánica secreta: nadie la conoce hasta que muere. Cada amanecer los eliminados reciben un objetivo, un jugador bueno elegido al azar. Ganan calaveras por cada voto que reciba en la mesa redonda (1 por voto y 2 más si lo destierran). Con 18, 26 o 33 calaveras roban el 50 %, 75 % o 100 % del botín final. Todo es configurable. Tienen su propio chat y su panel, y la revelación llega en la pantalla final.
 
-## 🛠️ Instalación
+## Pantallas
 
-### Requisitos Previos
-- Node.js 18 o superior
-- MongoDB (opcional: sin él la partida funciona, pero solo se guarda en memoria)
+| Ruta | Para quién |
+|---|---|
+| `/` | Entrar con el código |
+| `/crear` | Crear una partida |
+| `/p/CÓDIGO` | Jugador. Incluye un enlace para usar la misma sesión en otro dispositivo |
+| `/mc/CÓDIGO` | Panel del MC: fases, votos en directo, cónclave, pruebas, chats, mensajes privados y enlaces para compartir |
+| `/tv/CÓDIGO` | Tele: jugadores, botín y pruebas a pantalla completa. Nunca muestra roles |
 
-### Backend
+Para sumar un segundo MC, o uno a distancia, basta con enviarle el enlace de MC desde la pestaña *Compartir*.
+
+## Desarrollo
+
+Requisitos: Node.js 18 o superior.
+
 ```bash
-cd backend
-npm install
-cp .env.example .env   # y edita los valores
-npm start
-npm test               # pruebas de la lógica del juego
+cd backend && npm install && npm test && npm run dev   # API en :4000
+cd frontend && npm install && npm start                 # web en :3000
 ```
 
-### Frontend (desarrollo)
-```bash
-cd frontend
-npm install
-npm start
-```
-En desarrollo el frontend se conecta al puerto 4000 de la misma máquina, así que desde el móvil basta con abrir `http://IP-DEL-PC:3000` estando en la misma red wifi. Para otro servidor, define `REACT_APP_SERVER_URL`.
+Desde el móvil, en la misma wifi: `http://IP-DEL-PC:3000`. Sin `MONGODB_URI` las partidas se guardan solo en memoria.
 
-### Producción
-```bash
-cd frontend && npm run build
-cd ../backend && npm start
-```
-El backend sirve el frontend compilado: todo funciona en un único puerto (`http://servidor:4000`).
+## Publicarlo (gratis)
 
-## 🚀 Uso
+1. Crea una base de datos gratuita en [MongoDB Atlas](https://www.mongodb.com/atlas) y copia su cadena de conexión.
+2. En [Render](https://render.com), *New → Blueprint* y elige este repositorio. Render lee `render.yaml`.
+3. Pega la cadena de conexión en `MONGODB_URI`. `JWT_SECRET` se genera solo.
+4. Opcional: en tu proveedor de dominio crea un `CNAME` (por ejemplo `juego.ivceballos.com`) hacia la dirección de Render y añádelo en *Settings → Custom Domains*.
 
-### Para Jugadores
-- Abre la web, introduce tu nombre (y una URL de foto opcional) y espera a que el MC comience
-- **Varios dispositivos:** en la partida, pulsa «Jugar también desde otro dispositivo» y abre ese enlace en tu móvil, portátil… (no lo compartas: revela tu rol)
-
-### Para el Maestro de Ceremonias
-- Abre `/master` e introduce la contraseña de MC
-- Avanza las fases, gestiona pruebas y puntos (también negativos), y quita jugadores antes de empezar
-
-## 🔒 Persistencia y Reconexión
-
-- Cada jugador tiene una identidad estable (no ligada a la conexión): recargar, perder la red o bloquear el móvil no le saca de la partida
-- El estado completo se guarda en MongoDB y se restaura si el servidor se reinicia
-- La sesión del MC también se recuerda en el navegador
+En el plan gratuito el servidor se duerme tras 15 minutos sin uso y tarda unos 30 segundos en despertar. Las partidas no se pierden porque están en la base de datos.

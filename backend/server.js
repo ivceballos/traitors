@@ -360,6 +360,10 @@ io.on('connection', (socket) => {
     master('mc:test-add', ({ game }, test) => { game.addTest(test); });
     master('mc:test-update', ({ game }, { id, changes }) => { game.updateTest(id, changes || {}); });
     master('mc:test-remove', ({ game }, { id }) => game.removeTest(id));
+    master('mc:spotlight', ({ room, game }, { id }) => {
+        const t = game.setSpotlight(id || null);
+        if (t) io.to(pubRoom(room.code)).emit('notice', `Prueba: ${t.name}`);
+    });
     master('mc:message', ({ room, game }, { text, toId }) => {
         const msg = game.mcMessage(text, toId || null);
         if (toId) notice(room, [toId], `✉️ Mensaje del MC: ${msg.message}`);
